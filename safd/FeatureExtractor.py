@@ -22,7 +22,7 @@ class Machine:
         return self.winChance
     
     def check_collision(self,playerXY):
-        # assuming x decreases as you go deeper and z decreases as you go right
+        # assuming x increases as you go deeper and y increases as you go right
         above_bottomLeft = playerXY[0] <= self.bottomLeft[0] and playerXY[2] <= self.bottomLeft[1]
         above_bottomRight = playerXY[0] <= self.bottomRight[0] and playerXY[2] >= self.bottomRight[1]
         below_upperLeft = playerXY[0] >= self.upperLeft[0] and playerXY[2] <= self.upperLeft[1]
@@ -78,15 +78,15 @@ class Trial:
     def update_walk(self,timestamp,rigidBodies):
         self.walk.update({timestamp:rigidBodies})
 
-    def check_out_of_foyer(self,timestamp,foyer_line):
-        # foyer_line should be [(x,z),(x,z)]
+    def check_in_foyer(self,timestamp,foyer_line):
+        # foyer_line should be [(x,y),(x,y)]
         processed_data = self.foyer.get(timestamp)
         # assuming parent rigid body is first
         current_position = next(iter(processed_data[0].values()))[0]
-        # assuming x decreases as you go deeper and z decreases as you go right
-        over_right = current_position[0] <= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
-        over_left = current_position[0] <= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
-        return over_left or over_right
+        # assuming x increases as you go deeper and y increases as you go right
+        under_start = current_position[0] <= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
+        under_finish = current_position[0] <= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
+        return under_start or under_finish
             
     def set_prediction(self,prediction,postPredictionWinRates):
         self.prediction = prediction
@@ -116,12 +116,11 @@ class Trial:
 
 class Game:
     
-    def __init__(self,B,M):
+    def __init__(self):
         self.machines = {}
         self.trials = []
         self.player = Player()
-        self.maxProbabilityAdjustment = M
-        self.houseAdvantage = B
+        self.maxProbabilityAdjustment = 0.1
         self.foyer_line = None
         self.inTrial = False
 
@@ -129,17 +128,8 @@ class Game:
         for name,delta in delta_list.items():
             self.machines[name].update_win_chance(delta)
 
-    def determine_adjustment(self,predicted_choice):
-        naiveDelta = self.maxProbabilityAdjustment / (len(self.machines)-1) # dont play w 1 machine, will divide by 0
-        adjustments = {}
-        sum = 0
-        for name,machine in self.machines.items():
-            if not name.equals(predicted_choice):
-                adjustments.update({name:naiveDelta})
-                sum += naiveDelta
-
-        adjustments.update({predicted_choice: -sum})
-        return adjustments
+    def determine_adjustment(self,playerChoice):
+        target = self.machines.get(playerChoice)
 
     def add_machine(self,machine):
         print(machine.get_name())
@@ -147,7 +137,7 @@ class Game:
         self.machines[machine.get_name()] = machine
 
     def set_foyer_line(self,foyer_line):
-        # [Left (x,z), Right (x,z)]
+        # [(x,y),(x,y)]
         self.foyer_line = foyer_line
 
     def start_next_trial(self):
@@ -166,15 +156,18 @@ class Game:
         processed_data = self.parse_mocap_data(mocap_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
-            if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
+            if trial.check_in_foyer(timestamp,self.foyer_line): # we have JUST entered foyer
+                print("LEFT FOYER")
                 # placeholder pipeline for predicting the machine to be played
-                prediction = LSTM.predict(trial.get_foyer(),self.machines)
+                #prediction = LSTM.predict(trial.get_foyer(),self.machines)
                 # placeholder pipeline for determining how to adjust the machine probabilities based on prediction
-                adjustments = self.determine_adjustment(prediction)
-                trial.set_prediction(prediction,adjustments)
-                self.adjust_probabilities(adjustments)
+                #adjustments = self.determine_adjustment(prediction)
+                #trial.set_prediction(prediction,adjustments)
+                #self.adjust_probabilities(adjustments)
                 # update walk history so we can later identify the "crossing point" by matching timestamps between arrays
                 trial.update_walk(timestamp,processed_data)
+            else:
+                print("IN FOYER")
         else:
             trial.update_walk(timestamp,processed_data)
             playerXYZ = trial.get_specific_walk_pos(timestamp)
@@ -183,9 +176,12 @@ class Game:
                 if machine.check_collision(playerXYZ) and playMachine == None:
                     playMachine = name
             if playMachine != None:
+                print(playMachine)
                 trial.evaluate(playMachine)
                 self.player.add_to_history(trial)
                 self.inTrial = False
+            else:
+                print("Not playing")
 
     def parse_mocap_data(self,mocap_data):
         skeleton_data = mocap_data.get_skeleton_data()
@@ -205,4 +201,4 @@ class Game:
 class LSTM:
 
     def predict(foyer_data,machines):
-        return next(iter(machines.keys())) # placeholder, returns first machine that was added
+        return next(iter(machines.keys())) # placeholder

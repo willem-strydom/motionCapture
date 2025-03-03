@@ -25,7 +25,7 @@ import DataDescriptions
 import MoCapData
 from FeatureExtractor import Game,Machine,Trial,Player,LSTM
 
-ourGame = Game(2,0.1)
+ourGame = Game()
 machine1 = Machine("M1",0.5,[-0.1,2.8],[-0.05,-0.16],[-1.8,2.9],[-1.8,0.1])
 machine2 = Machine("M2",0.5,[0,0],[0,1],[1,0],[1,1])
 machine3 = Machine("M3",0.5,[0,0],[0,1],[1,0],[1,1])
