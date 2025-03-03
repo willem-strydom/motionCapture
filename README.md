@@ -1,3 +1,4 @@
+```
 project-root/                       # Root directory of the project
 ├── unmodified_from_NAT_net/        # Config files that required no modification
 │   ├── DataDescriptions.py         # 
@@ -14,3 +15,4 @@ project-root/                       # Root directory of the project
 ├── requirements.txt                # List of project dependencies
 ├── README.md                       # This document
 └── .gitignore                      # ignore python caches
+```
