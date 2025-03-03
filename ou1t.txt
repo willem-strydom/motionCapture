@@ -1,0 +1,13 @@
+[PASS]:Test Prefix Data 0
+[PASS]:Test Markerset Data 0
+[PASS]:Test Rigid Body Data 0
+[PASS]:Test Skeleton Data 0
+[PASS]:Test Labeled Marker Data 0
+[PASS]:Test Force Plate Data 0
+[PASS]:Test Device Data 0
+[PASS]:Test Suffix Data 0
+[PASS]:Test MoCap Data 0
+--------------------
+[PASS] Count =   9
+[FAIL] Count =   0
+[SKIP] Count =   0
