@@ -28,8 +28,8 @@ class TestMachine(unittest.TestCase):
 
     def test_win_chance_updates(self):
         initial_chance = self.machine.get_win_chance()
-        self.machine.update_win_chance(0.1)
-        self.assertAlmostEqual(self.machine.get_win_chance(), 0.5)
+        self.machine.set_win_chance(0.1)
+        self.assertEqual(self.machine.get_win_chance(), 0.1)
 
 class TestPlayer(unittest.TestCase):
     def setUp(self):
@@ -73,7 +73,7 @@ class TestTrial(unittest.TestCase):
         # Initial setup
         initial_total = sum(self.trial.prePredictionWinRates.values())
         adjustments = {"MachineA": -0.1, "MachineB": 0.1}
-        
+
         # Apply prediction and adjustments
         self.trial.set_prediction("MachineA", adjustments)
         
@@ -102,9 +102,15 @@ class TestGame(unittest.TestCase):
         self.assertIn("Slot1", self.game.machines)
 
     def test_probability_adjustment(self):
-        initial_chance = self.game.machines["Slot1"].get_win_chance()
-        self.game.adjust_probabilities({"Slot1": -0.1, "Slot2": 0.1})
-        self.assertAlmostEqual(self.game.machines["Slot1"].get_win_chance(), 0.3)
+        initial_houseAdvantage = 0
+        for name,machine in self.game.machines.items():
+            initial_houseAdvantage += machine.get_win_chance()
+        adjustments = self.game.determine_adjustment("Slot1")
+        self.game.adjust_probabilities("Slot1",adjustments)
+        actual_houseAdvantage = 0
+        for name,machine in self.game.machines.items():
+            actual_houseAdvantage += machine.get_win_chance()
+        self.assertEqual(actual_houseAdvantage,initial_houseAdvantage, "Total probabilities should remain exactly equal to house advantage")
 
     def test_frame_processing(self):
         # Generate test mocap data

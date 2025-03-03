@@ -12,8 +12,8 @@ class Machine:
         self.upperRight = upperRight
         self.winChance = winChance
 
-    def update_win_chance(self,delta):
-        self.winChance += delta
+    def set_win_chance(self,updated_rate):
+        self.winChance = updated_rate
 
     def get_name(self):
         return self.name
@@ -131,16 +131,25 @@ class Game:
         self.foyer_line = None
         self.inTrial = False
 
-    def adjust_probabilities(self,delta_list):
-        for name,delta in delta_list.items():
-            self.machines[name].update_win_chance(delta)
+    def adjust_probabilities(self,prediction,delta_list):
+        self.prediction = prediction
+        pre_sum = 0
+        post_sum = 0
+        for name,winRate in delta_list.items():
+            pre_sum += self.machines[name].get_win_chance()
+            new_rate = winRate + self.machines[name].get_win_chance()
+            self.machines[name].set_win_chance(new_rate)
+            post_sum += new_rate
+        if pre_sum != post_sum:
+            self.machines[prediction].set_win_chance(self.machines[prediction].get_win_chance()+ pre_sum - post_sum)
+            
 
     def determine_adjustment(self,predicted_choice):
         naiveDelta = self.maxProbabilityAdjustment / (len(self.machines)-1) # dont play w 1 machine, will divide by 0
         adjustments = {}
         sum = 0
         for name,machine in self.machines.items():
-            if not name.equals(predicted_choice):
+            if not name == predicted_choice:
                 adjustments.update({name:naiveDelta})
                 sum += naiveDelta
 
@@ -178,7 +187,7 @@ class Game:
                 # placeholder pipeline for determining how to adjust the machine probabilities based on prediction
                 adjustments = self.determine_adjustment(prediction)
                 trial.set_prediction(prediction,adjustments)
-                self.adjust_probabilities(adjustments)
+                self.adjust_probabilities(prediction,adjustments)
                 # update walk history so we can later identify the "crossing point" by matching timestamps between arrays
                 trial.update_walk(timestamp,processed_data)
         else:
