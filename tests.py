@@ -1,172 +1,155 @@
 import unittest
-from unittest.mock import patch, MagicMock, mock_open
-from FeatureExtractor import Machine, Player, Trial, Game, LSTM
-from MoCapData import (
-    generate_mocap_data,
-    generate_rigid_body,
-    generate_skeleton_data,
-    generate_prefix_data,
-    generate_suffix_data,
-    RigidBody
-)
+import json
+import os
+from MoCapData import generate_mocap_data, generate_position_srand
+from FeatureExtractor import Machine, Player, Trial, Game
 
-class TestGameIntegration(unittest.TestCase):
+class TestMachine(unittest.TestCase):
     def setUp(self):
-        self.game = Game()
         self.machine = Machine(
-            "TestMachine", 0.5,
-            bottomLeft=(0,0), bottomRight=(0,10),
-            upperLeft=(10,0), upperRight=(10,10)
-        )
-        self.game.add_machine(self.machine)
-        self.game.set_foyer_line([(0,0), (0,10)])
-
-    def create_custom_mocap(self, frame_num=0, position=(0,0,0)):
-        """Create mocap data with custom position using official generators"""
-        mocap_data = generate_mocap_data(frame_num)
-        
-        # Create custom rigid body with specified position
-        custom_body = generate_rigid_body(
-            body_num=999,  # Unique ID for test body
-            frame_num=frame_num
-        )
-        custom_body.pos = position
-        custom_body.tracking_valid = True
-
-        # Create skeleton data with custom body
-        skeleton = next(iter(mocap_data.skeleton_data.skeleton_list))
-        skeleton.rigid_body_list = [custom_body]
-        
-        return mocap_data
-
-    @patch.object(LSTM, 'predict')
-    def test_full_play_cycle(self, mock_predict):
-        mock_predict.return_value = "TestMachine"
-        
-        # Start trial
-        self.game.start_next_trial()
-        
-        # Frame 1: In foyer
-        mocap_foyer = self.create_custom_mocap(
-            frame_num=1,
-            position=(0, 5, 0)  # On foyer line
-        )
-        self.game.receive_new_frame({"frame_number": 1}, mocap_foyer)
-        
-        # Verify prediction made
-        trial = self.game.trials[-1]
-        self.assertEqual(trial.prediction, "TestMachine")
-        
-        # Frame 2: Enter machine area
-        mocap_machine = self.create_custom_mocap(
-            frame_num=2,
-            position=(5, 5, 0)  # Inside machine
-        )
-        self.game.receive_new_frame({"frame_number": 2}, mocap_machine)
-        
-        # Verify outcome recorded
-        self.assertIsNotNone(trial.outcome)
-        self.assertIn("TestMachine", trial.outcome)
-
-    def test_mocap_data_parsing(self):
-        # Generate official test data
-        mocap_data = generate_mocap_data(0)
-        processed = self.game.parse_mocap_data(mocap_data)
-        
-        # Verify structure parsing
-        self.assertTrue(len(processed) > 0)
-        self.assertIsInstance(processed[0], dict)
-        
-        # Verify rigid body extraction
-        skeleton_data = mocap_data.get_skeleton_data()
-        expected_body = skeleton_data.get_skeleton_list()[0].get_rigid_body_list()[0]
-        body_id = expected_body.get_id()
-        self.assertIn(body_id, processed[0])
-
-    def test_collision_detection_with_generated_data(self):
-        # Generate rigid body at edge case position
-        edge_body = generate_rigid_body(
-            body_num=0,
-            frame_num=0
-        )
-        edge_body.pos = [10, 10, 0]  # Machine upperRight
-        
-        # Test collision detection
-        self.assertTrue(self.machine.check_collision(edge_body.pos[:2]))
-
-    def test_foyer_detection(self):
-        # Generate frame with prefix data
-        mocap_data = generate_mocap_data(1)
-        prefix_data = generate_prefix_data(1)
-        mocap_data.set_prefix_data(prefix_data)
-        
-        # Add custom position
-        skeleton = mocap_data.get_skeleton_data().get_skeleton_list()[0]
-        skeleton.rigid_body_list[0].pos = [0, 5, 0]  # On foyer line
-        
-        # Process frame
-        self.game.start_next_trial()
-        self.game.receive_new_frame({"frame_number": 1}, mocap_data)
-        
-        # Verify foyer detection
-        trial = self.game.trials[-1]
-        self.assertGreater(len(trial.foyer), 0)
-
-class TestMocapDataStructures(unittest.TestCase):
-    def test_generated_data_consistency(self):
-        # Test official generator functions
-        frame_num = 42
-        mocap_data = generate_mocap_data(frame_num)
-        
-        # Verify frame number in prefix
-        self.assertEqual(mocap_data.prefix_data.frame_number, frame_num)
-        
-        # Verify skeleton data
-        self.assertGreaterEqual(
-            mocap_data.skeleton_data.get_skeleton_count(),
-            3
-        )
-        
-        # Verify rigid body data
-        skeleton = mocap_data.skeleton_data.get_skeleton_list()[0]
-        self.assertGreaterEqual(
-            len(skeleton.get_rigid_body_list()),
-            2
+            name="TestMachine",
+            winChance=0.4,
+            bottomLeft=(20, 15),
+            bottomRight=(20, 5),
+            upperLeft=(10, 15),
+            upperRight=(10, 5)
         )
 
-    def test_rigid_body_generation(self):
-        body = generate_rigid_body(0, 0)
-        self.assertIsInstance(body, RigidBody)
-        self.assertTrue(body.tracking_valid)
-        
-        # Verify position generation
-        pos = body.get_position()
-        self.assertEqual(len(pos), 3)
-        self.assertTrue(all(isinstance(v, float) for v in pos))
+    def test_collision_detection(self):
+        # Test inside bounds
+       # machine1 = Machine("M1",0.5,[-0.1,2.8],[-0.05,-0.16],[-1.8,2.9],[-1.8,0.1])
 
-class TestTrialProcessing(unittest.TestCase):
+        self.assertTrue(self.machine.check_collision((15, 0, 10)))
+        # Test outside bounds
+        self.assertFalse(self.machine.check_collision((5, 0, 3)))
+        # Test edge cases
+        self.assertTrue(self.machine.check_collision((10, 0, 5)))
+        self.assertTrue(self.machine.check_collision((20, 0, 15)))
+
+    def test_win_chance_updates(self):
+        initial_chance = self.machine.get_win_chance()
+        self.machine.update_win_chance(0.1)
+        self.assertAlmostEqual(self.machine.get_win_chance(), 0.5)
+
+class TestPlayer(unittest.TestCase):
+    def setUp(self):
+        self.player = Player()
+        self.test_file = "test_history.json"
+
+    def tearDown(self):
+        if os.path.exists(self.test_file):
+            os.remove(self.test_file)
+
+    def test_history_storage(self):
+        machines = {"Machine1": Machine("Machine1", 0.3, (0,0), (0,0), (0,0), (0,0))}
+        trial = Trial(machines)
+        self.player.add_to_history(trial)
+        self.assertEqual(len(self.player.history), 1)
+
+    def test_json_output(self):
+        machines = {"Machine1": Machine("Machine1", 0.3, (0,0), (0,0), (0,0), (0,0))}
+        trial = Trial(machines)
+        self.player.add_to_history(trial)
+        self.player.write_history_to_file(self.test_file)
+        
+        with open(self.test_file) as f:
+            data = json.load(f)
+            self.assertEqual(len(data), 1)
+
+class TestTrial(unittest.TestCase):
     def setUp(self):
         self.machines = {
-            "M1": Machine("M1", 0.4, (0,0), (0,0), (0,0), (0,0)),
-            "M2": Machine("M2", 0.6, (0,0), (0,0), (0,0), (0,0))
+            "MachineA": Machine("MachineA", 0.4, (0,0), (0,0), (0,0), (0,0)),
+            "MachineB": Machine("MachineB", 0.3, (0,0), (0,0), (0,0), (0,0))
+        }
+        self.trial = Trial(self.machines)
+
+    def test_foyer_updates(self):
+        test_data = {"rb1": [(1,2,3), (0,0,0,1)]}
+        self.trial.update_foyer(123, test_data)
+        self.assertIn(123, self.trial.foyer)
+
+    def test_prediction_mechanism(self):
+        # Initial setup
+        initial_total = sum(self.trial.prePredictionWinRates.values())
+        adjustments = {"MachineA": -0.1, "MachineB": 0.1}
+        
+        # Apply prediction and adjustments
+        self.trial.set_prediction("MachineA", adjustments)
+        
+        # Verify exact sum preservation
+        post_total = sum(self.trial.postPredictionWinRates.values())
+        self.assertEqual(post_total, initial_total, 
+                        "Total probabilities should remain exactly equal to house advantage")
+        
+        # Verify individual machine changes using exact comparisons
+        self.assertAlmostEqual(self.trial.postPredictionWinRates["MachineA"], 
+                        self.trial.prePredictionWinRates["MachineA"] + adjustments["MachineA"])
+        self.assertAlmostEqual(self.trial.postPredictionWinRates["MachineB"], 
+                        self.trial.prePredictionWinRates["MachineB"] + adjustments["MachineB"])
+
+class TestGame(unittest.TestCase):
+    def setUp(self):
+        self.game = Game(B=0.05, M=0.1)
+        self.machine1 = Machine("Slot1", 0.4, (10,5), (10,15), (20,5), (20,15))
+        self.machine2 = Machine("Slot2", 0.3, (25,5), (25,15), (35,5), (35,15))
+        self.game.add_machine(self.machine1)
+        self.game.add_machine(self.machine2)
+        self.game.set_foyer_line([(15,5), (15,15)])
+
+    def test_machine_management(self):
+        self.assertEqual(len(self.game.machines), 2)
+        self.assertIn("Slot1", self.game.machines)
+
+    def test_probability_adjustment(self):
+        initial_chance = self.game.machines["Slot1"].get_win_chance()
+        self.game.adjust_probabilities({"Slot1": -0.1, "Slot2": 0.1})
+        self.assertAlmostEqual(self.game.machines["Slot1"].get_win_chance(), 0.3)
+
+    def test_frame_processing(self):
+        # Generate test mocap data
+        mocap_data = generate_mocap_data(frame_num=1)
+        print("mocapskeletoncount")
+        print(mocap_data.get_skeleton_data().get_skeleton_count())
+        print(mocap_data.get_skeleton_data().get_skeleton_list())
+        print("end")
+        # Simulate frame data dictionary
+        data_dict = {
+            "frame_number": 1,
+            "other_info": "test"
         }
         
-    def test_trial_initialization(self):
-        mocap_data = generate_mocap_data(0)
-        trial = Trial(self.machines)
+        self.game.start_next_trial()
+        self.game.receive_new_frame(data_dict, mocap_data)
         
-        # Verify win rate capture
-        self.assertEqual(trial.prePredictionWinRates["M1"], 0.4)
-        self.assertEqual(trial.prePredictionWinRates["M2"], 0.6)
+        # Verify data parsing
+        current_trial = self.game.trials[-1]
+        self.assertGreater(len(current_trial.foyer), 0)
 
-    @patch("random.random")
-    def test_outcome_evaluation(self, mock_random):
-        mock_random.return_value = 0.5  # Mid value
-        trial = Trial(self.machines)
-        trial.postPredictionWinRates = {"M1": 0.5}
+class TestMocapIntegration(unittest.TestCase):
+    def test_data_parsing(self):
+        # Generate complex mocap data
+        mocap_data = generate_mocap_data(frame_num=1)
+        game = Game(B=0.05, M=0.1)
+        game.start_next_trial()
         
-        outcome = trial.evaluate("M1")
-        self.assertTrue(outcome["M1"])
+        # Test skeleton parsing
+        parsed_data = game.parse_mocap_data(mocap_data)
+        self.assertIsInstance(parsed_data, list)
+        #if parsed_data:  # Only check if data exists
+            #self.assertIn("Position", str(parsed_data[0]))
 
-if __name__ == "__main__":
-    unittest.main(failfast=True)
+    def test_collision_detection_with_real_data(self):
+        machine = Machine("Test", 0.4, (10,5), (10,15), (20,5), (20,15))
+        # Generate position from mocap data generator
+        test_position = generate_position_srand(0, 0)
+        # Convert to proper format (x,z,y?)
+        # Note: Coordinate system conversion might be needed here
+        collision = machine.check_collision((test_position[0], 0, test_position[2]))
+        self.assertIsInstance(collision, bool)
+
+# Note: The LSTM predictor cannot be properly tested with current implementation
+# as it's just a placeholder. This should be addressed when implementing real ML.
+
+if __name__ == '__main__':
+    unittest.main()

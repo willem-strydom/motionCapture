@@ -931,6 +931,7 @@ def generate_rigid_body(body_num=0, frame_num = 0):
     rigid_body.add_rigid_body_marker(generate_rigid_body_marker_srand(0, frame_num))
     rigid_body.add_rigid_body_marker(generate_rigid_body_marker_srand(1, frame_num))
     rigid_body.add_rigid_body_marker(generate_rigid_body_marker_srand(2))
+    rigid_body.tracking_valid = True
     return rigid_body
 
 def generate_rigid_body_data(frame_num = 0):
@@ -952,9 +953,7 @@ def generate_skeleton(frame_num=0, skeleton_num=0,num_rbs=1):
 
 def generate_skeleton_data(frame_num = 0):
     skeleton_data = SkeletonData()
-    skeleton_data.add_skeleton(generate_skeleton(frame_num, 0, 2))
-    skeleton_data.add_skeleton(generate_skeleton(frame_num, 1, 6))
-    skeleton_data.add_skeleton(generate_skeleton(frame_num, 2, 3))
+    skeleton_data.add_skeleton(generate_skeleton(frame_num, 1, 5))
     return skeleton_data
 
 def generate_labeled_marker(frame_num=0, marker_num=0):
@@ -1045,13 +1044,13 @@ def generate_mocap_data(frame_num=0):
     mocap_data=MoCapData()
 
     mocap_data.set_prefix_data(generate_prefix_data(frame_num))
-    mocap_data.set_marker_set_data(generate_marker_set_data(frame_num))
-    mocap_data.set_rigid_body_data(generate_rigid_body_data(frame_num))
+    #mocap_data.set_marker_set_data(generate_marker_set_data(frame_num))
+    #mocap_data.set_rigid_body_data(generate_rigid_body_data(frame_num))
     mocap_data.set_skeleton_data(generate_skeleton_data(frame_num))
-    mocap_data.set_labeled_marker_data(generate_labeled_marker_data(frame_num))
-    mocap_data.set_force_plate_data(generate_force_plate_data(frame_num))
-    mocap_data.set_device_data(generate_device_data(frame_num))
-    mocap_data.set_suffix_data(generate_suffix_data(frame_num))
+    #mocap_data.set_labeled_marker_data(generate_labeled_marker_data(frame_num))
+    #mocap_data.set_force_plate_data(generate_force_plate_data(frame_num))
+    #mocap_data.set_device_data(generate_device_data(frame_num))
+    #mocap_data.set_suffix_data(generate_suffix_data(frame_num))
 
     return mocap_data
 

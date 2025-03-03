@@ -83,16 +83,22 @@ class Trial:
         processed_data = self.foyer.get(timestamp)
         # assuming parent rigid body is first
         current_position = next(iter(processed_data[0].values()))[0]
-        # assuming x decreases as you go deeper and z decreases as you go right
+        # assuming x decreases as you go left and z decreases as you go "up"
         over_right = current_position[0] <= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
         over_left = current_position[0] <= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
         return over_left or over_right
             
     def set_prediction(self,prediction,postPredictionWinRates):
         self.prediction = prediction
+        pre_sum = 0
+        post_sum = 0
         for name,winRate in self.prePredictionWinRates.items():
-            self.postPredictionWinRates[name] = winRate + postPredictionWinRates[name]
-
+            pre_sum += winRate
+            new_rate = winRate + postPredictionWinRates[name]
+            self.postPredictionWinRates[name] = new_rate
+            post_sum += new_rate
+        if pre_sum != post_sum:
+            self.postPredictionWinRates[prediction] += pre_sum - post_sum
     def get_prediction(self):
         return self.prediction
     
