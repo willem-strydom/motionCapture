@@ -176,7 +176,9 @@ class Game:
             return
         trial = self.trials[-1] # most recent trial
         timestamp = data_dict["frame_number"]
+        print(mocap_data)
         processed_data = self.parse_mocap_data(mocap_data)
+        print(processed_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
             if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
@@ -205,6 +207,7 @@ class Game:
         skeleton_list = skeleton_data.get_skeleton_list()
         skeleton = None
         rigid_body_list = None
+        print(skeleton_data.get_skeleton_count())
         if skeleton_data.get_skeleton_count() == 1:
             skeleton = skeleton_list[0]
             rigid_body_list = []

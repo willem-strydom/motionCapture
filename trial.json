@@ -1,0 +1,14 @@
+[
+    {
+        "prediction": null,
+        "outcome": null,
+        "pre_win_rates": {
+            "m1": 0.5
+        },
+        "post_win_rates": {},
+        "foyer": {
+            "163444723": null
+        },
+        "walk": {}
+    }
+]
