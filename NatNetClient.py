@@ -23,6 +23,12 @@ import time
 import DataDescriptions
 import MoCapData
 
+def connectToServer():
+    return True
+
+def disconnectFromServer():
+    return True
+
 def trace( *args ):
     # uncomment the one you want to use
     #print( "".join(map(str,args)) )

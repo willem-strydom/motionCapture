@@ -157,8 +157,6 @@ class Game:
         return adjustments
 
     def add_machine(self,machine):
-        print(machine.get_name())
-        print(machine.get_win_chance())
         self.machines[machine.get_name()] = machine
 
     def set_foyer_line(self,foyer_line):

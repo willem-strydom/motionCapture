@@ -76,7 +76,7 @@ class TestTrial(unittest.TestCase):
 
         # Apply prediction and adjustments
         self.trial.set_prediction("MachineA", adjustments)
-        
+
         # Verify exact sum preservation
         post_total = sum(self.trial.postPredictionWinRates.values())
         self.assertEqual(post_total, initial_total, 
@@ -115,10 +115,7 @@ class TestGame(unittest.TestCase):
     def test_frame_processing(self):
         # Generate test mocap data
         mocap_data = generate_mocap_data(frame_num=1)
-        print("mocapskeletoncount")
-        print(mocap_data.get_skeleton_data().get_skeleton_count())
-        print(mocap_data.get_skeleton_data().get_skeleton_list())
-        print("end")
+
         # Simulate frame data dictionary
         data_dict = {
             "frame_number": 1,
@@ -127,7 +124,7 @@ class TestGame(unittest.TestCase):
         
         self.game.start_next_trial()
         self.game.receive_new_frame(data_dict, mocap_data)
-        
+
         # Verify data parsing
         current_trial = self.game.trials[-1]
         self.assertGreater(len(current_trial.foyer), 0)
