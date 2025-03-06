@@ -354,7 +354,7 @@ class GameManager:
             self.current_rigid_body_pos = (x, z)
             
             # Update red dot position
-            dpg.set_value("red_dot", [x,z])
+            #dpg.set_value("red_dot", [x,z])
 
 
 class MainApp:
