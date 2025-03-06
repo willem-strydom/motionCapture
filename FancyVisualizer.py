@@ -259,10 +259,6 @@ class ConnectionManager:
                     self.logger.log_event("ERROR: Could not start streaming client.")
                     self.streaming_client = None
                 else:
-                    #time.sleep(1)
-                    #if self.streaming_client.connected() is False:
-                    #    self.logger.log_event("ERROR: Could not connect properly.  Check that Motive streaming is on.")
-                    #else:
                     dpg.set_item_label(self.connection, "Connected!")
                     dpg.bind_item_theme(self.connection, self.green_theme)
                     self.logger.log_event("Connected to server")
@@ -339,6 +335,7 @@ class GameManager:
         self.update_rigid_body_visual(mocap_data)
         
         # Process game logic
+        #self.logger.log_event(f"Collision detected with {data_dict}")
         self.game.receive_new_frame(data_dict, mocap_data)
         
         # Check for collision events
@@ -357,7 +354,7 @@ class GameManager:
             self.current_rigid_body_pos = (x, z)
             
             # Update red dot position
-            dpg.set_value("red_dot", [x, z])
+            dpg.set_value("red_dot", [x,z])
 
 
 class MainApp:
