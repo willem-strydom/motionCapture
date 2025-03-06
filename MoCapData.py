@@ -151,7 +151,7 @@ class MarkerData:
         out_str+="%sMarker Count :%3.1d\n"%(out_tab_str, marker_count)
         for i in range(marker_count):
             pos = self.marker_pos_list[i]
-            out_str+="%sMarker %3.1d pos : [x=%3.2f,y=%3.2f,z=%3.2f]\n"%(out_tab_str2,i,pos[0], pos[1], pos[2])
+            out_str+="%sMarker %3.1d pos : [x=%5.6f,y=%5.6f,z=%5.6f]\n"%(out_tab_str2,i,pos[0], pos[1], pos[2])
         return out_str
 
 class MarkerSetData:
@@ -263,7 +263,7 @@ class RigidBody:
 
     def get_as_string(self, tab_str=0, level=0):
         out_tab_str = get_tab_str(tab_str, level)
-        out_tab_str2 = get_tab_str(tab_str, level+1)
+        #out_tab_str2 = get_tab_str(tab_str, level+1)
 
         out_str=""
 

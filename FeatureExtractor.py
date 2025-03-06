@@ -68,8 +68,8 @@ class Trial:
         self.postPredictionWinRates = {}
         
     def evaluate(self,choice):
-        roll = random.random
-        self.outcome = {choice:(roll < self.postPredictionWinRates.get(choice))}
+        rollValue = random.random()
+        self.outcome = {choice:(rollValue < self.postPredictionWinRates.get(choice))}
         return self.outcome
 
     def update_foyer(self,timestamp,rigidBodies):
@@ -81,6 +81,8 @@ class Trial:
     def check_out_of_foyer(self,timestamp,foyer_line):
         # foyer_line should be [(x,z),(x,z)]
         processed_data = self.foyer.get(timestamp)
+        #print(processed_data)
+        #print(self.get_foyer())
         # assuming parent rigid body is first
         current_position = next(iter(processed_data[0].values()))[0]
         # assuming x decreases as you go left and z decreases as you go "up"
@@ -130,6 +132,8 @@ class Game:
         self.houseAdvantage = B
         self.foyer_line = None
         self.inTrial = False
+        self.behindFoyer = True
+        self.playMachine = None
 
     def adjust_probabilities(self,prediction,delta_list):
         self.prediction = prediction
@@ -166,7 +170,9 @@ class Game:
     def start_next_trial(self):
         self.trials.append(Trial(self.machines))
         self.inTrial = True
-
+        self.behindFoyer = True
+        self.playMachine = None
+        
     def save_current_trial(self):
         self.player.add_to_history(self.trials[-1])
         self.player.write_history_to_file("trial.json")
@@ -176,12 +182,14 @@ class Game:
             return
         trial = self.trials[-1] # most recent trial
         timestamp = data_dict["frame_number"]
-        print(mocap_data)
+        #print(f"reciefed frame {timestamp}")
+        #print(mocap_data)
         processed_data = self.parse_mocap_data(mocap_data)
-        print(processed_data)
+        #print(processed_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
             if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
+                self.behindFoyer = False
                 # placeholder pipeline for predicting the machine to be played
                 prediction = LSTM.predict(trial.get_foyer(),self.machines)
                 # placeholder pipeline for determining how to adjust the machine probabilities based on prediction
@@ -198,6 +206,7 @@ class Game:
                 if machine.check_collision(playerXYZ) and playMachine == None:
                     playMachine = name
             if playMachine != None:
+                self.playingMachine = playMachine
                 trial.evaluate(playMachine)
                 self.player.add_to_history(trial)
                 self.inTrial = False
@@ -207,15 +216,21 @@ class Game:
         skeleton_list = skeleton_data.get_skeleton_list()
         skeleton = None
         rigid_body_list = None
-        print(skeleton_data.get_skeleton_count())
+        #print(skeleton_data.get_skeleton_count())
+        #print(skeleton_list)
         if skeleton_data.get_skeleton_count() == 1:
             skeleton = skeleton_list[0]
             rigid_body_list = []
             for rigid_body in skeleton.get_rigid_body_list():
+                #print(rigid_body)
                 if rigid_body.is_valid():
+                    #print('valid')
                     important_data = {}
                     important_data.update({rigid_body.get_id():[rigid_body.get_position(),rigid_body.get_rotation()]})
                     rigid_body_list.append(important_data)
+                #else:
+                    #print(rigid_body.get_as_string())
+                
         return rigid_body_list
     
 class LSTM:

@@ -39,6 +39,7 @@ ourGame.set_foyer_line([[1.1,-0.3],[1.1,4]])
 # This is a callback function that gets connected to the NatNet client
 # and called once per mocap frame.
 def receive_new_frame(data_dict, mocap_data):
+    #for
     ourGame.receive_new_frame(data_dict,mocap_data)
 
 # This is a callback function that gets connected to the NatNet client. It is called once per rigid body per frame
@@ -160,7 +161,7 @@ def my_parse_args(arg_list, args_dict):
 if __name__ == "__main__":
 
     optionsDict = {}
-    optionsDict["clientAddress"] = "192.168.1.196"
+    optionsDict["clientAddress"] = "192.168.1.127"
     optionsDict["serverAddress"] = "10.229.139.24"
     optionsDict["use_multicast"] = True
 

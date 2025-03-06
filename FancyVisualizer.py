@@ -191,7 +191,7 @@ class ConnectionManager:
         self.thread = None
         self.logger = logger
         self.btn = None
-        self.clientAddress =  "192.168.1.196"
+        self.clientAddress =  "192.168.1.127"
         self.serverAddress = "10.229.139.24"
         self.streaming_client = None
         self.game_manager = game_manager
@@ -328,6 +328,8 @@ class GameManager:
         self.current_rigid_body_pos = (0, 0)
         
         self.game.set_foyer_line([[1.1,-0.3],[1.1,4]])
+        self.game.add_machine(Machine("m1",0.5,[-2.485,2.858],[-2.425,2.228],[-3.091,2.890],[-3.091,2.228]))
+        self.game.add_machine(Machine("m2",0.5,[-2.425,2.228],[-2.425,1.600],[-3.091,2.228],[-3.091,1.600]))
 
 
     def receive_new_frame(self, data_dict, mocap_data):
@@ -337,7 +339,13 @@ class GameManager:
         # Process game logic
         #self.logger.log_event(f"Collision detected with {data_dict}")
         self.game.receive_new_frame(data_dict, mocap_data)
+        if not self.game.behindFoyer:
+            self.logger.log_event("Left Foyer!")
+            self.game.behindFoyer = True
+        if self.game.playMachine != None:
+            self.logger.log_event(f"Played machine {self.game.playMachine}")
         
+        #print(mocap_data)
         # Check for collision events
         if self.game.inTrial and self.game.trials:
             current_trial = self.game.trials[-1]
