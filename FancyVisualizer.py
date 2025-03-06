@@ -259,13 +259,13 @@ class ConnectionManager:
                     self.logger.log_event("ERROR: Could not start streaming client.")
                     self.streaming_client = None
                 else:
-                    time.sleep(1)
-                    if self.streaming_client.connected() is False:
-                        self.logger.log_event("ERROR: Could not connect properly.  Check that Motive streaming is on.")
-                    else:
-                        dpg.set_item_label(self.connection, "Connected!")
-                        dpg.bind_item_theme(self.connection, self.green_theme)
-                        self.logger.log_event("Connected to server")
+                    #time.sleep(1)
+                    #if self.streaming_client.connected() is False:
+                    #    self.logger.log_event("ERROR: Could not connect properly.  Check that Motive streaming is on.")
+                    #else:
+                    dpg.set_item_label(self.connection, "Connected!")
+                    dpg.bind_item_theme(self.connection, self.green_theme)
+                    self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
         else:
@@ -357,7 +357,7 @@ class GameManager:
             self.current_rigid_body_pos = (x, z)
             
             # Update red dot position
-            dpg.set_value("red_dot", [x], [z])
+            dpg.set_value("red_dot", [x, z])
 
 
 class MainApp:
