@@ -121,6 +121,9 @@ class Trial:
     
     def get_specific_walk_pos(self,timestamp):
         return next(iter(self.walk.get(timestamp)[0].values()))[0]
+    
+    def get_name(self):
+        return next(iter(self.foyer.keys()))
 
 class Game:
     
@@ -174,8 +177,9 @@ class Game:
         self.playMachine = None
         
     def save_current_trial(self):
-        self.player.add_to_history(self.trials[-1])
-        self.player.write_history_to_file("trial.json")
+        trial = self.trials[-1]
+        self.player.add_to_history(trial)
+        self.player.write_history_to_file(f"trial_{trial.get_name()}.json")
 
     def receive_new_frame(self, data_dict, mocap_data):
         if not self.inTrial:
@@ -209,7 +213,7 @@ class Game:
                 self.playingMachine = playMachine
                 trial.evaluate(playMachine)
                 self.player.add_to_history(trial)
-                self.inTrial = False
+                #self.inTrial = False
 
     def parse_mocap_data(self,mocap_data):
         skeleton_data = mocap_data.get_skeleton_data()

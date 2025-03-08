@@ -2,12 +2,13 @@ import dearpygui.dearpygui as dpg
 from NatNetClient import NatNetClient
 import threading
 import textwrap
-from time import time
+from time import time,sleep
 from FeatureExtractor import Machine, Game, Player, Trial
 
 class MachineManager:
-    def __init__(self, logger, game_manager):
+    def __init__(self, logger, game_manager,plot_manager):
         self.game_manager = game_manager
+        self.plot_manager = plot_manager
         self.current_selected = None
         self.logger = logger
         self.plot_tags = {}  # To store plot elements for each machine
@@ -58,7 +59,7 @@ class MachineManager:
             
             self.game_manager.game.add_machine(new_machine)
             self.update_machine_list()
-            self.draw_machine_boundary(new_machine)
+            self.plot_manager.draw_machine_boundary(new_machine)
             self.logger.log_event(f"Added machine: {name}")
 
 
@@ -84,8 +85,8 @@ class MachineManager:
                 machine.upperRight = (coords[6], coords[7])
                 
                 # Update the visual representation
-                self.remove_machine_boundary(machine.name)
-                self.draw_machine_boundary(machine)
+                self.plot_manager.remove_machine_boundary(machine.name)
+                self.plot_manager.draw_machine_boundary(machine)
                 
                 self.game_manager.game.machines[self.current_selected] = machine
                 self.logger.log_event(f"Updated {machine.name} win chance to {machine.winChance} and coordinates")
@@ -94,7 +95,7 @@ class MachineManager:
 
     def delete_machine(self):
         if self.current_selected:
-            self.remove_machine_boundary(self.current_selected)
+            self.plot_manager.remove_machine_boundary(self.current_selected)
             del self.game_manager.game.machines[self.current_selected]
             self.update_machine_list()
             self.logger.log_event(f"Deleted machine: {self.current_selected}")
@@ -124,67 +125,6 @@ class MachineManager:
     def update_machine_list(self):
         dpg.configure_item("machine_list", items=list(self.game_manager.game.machines.keys()))
 
-    
-    def draw_machine_boundary(self, machine):
-        """Draw a bounding box with machine name annotation"""
-        import random
-        r = random.randint(50, 200)
-        g = random.randint(50, 200)
-        b = random.randint(50, 200)
-        
-        name_safe = machine.name.replace(" ", "_")
-        boundary_tag = f"boundary_{name_safe}"
-        annotation_tag = f"annotation_{name_safe}"
-        
-        # Get coordinates
-        bl = machine.bottomLeft
-        br = machine.bottomRight
-        ul = machine.upperLeft
-        ur = machine.upperRight
-        
-        # Store tags for later deletion
-        self.plot_tags[machine.name] = (boundary_tag, annotation_tag)
-
-        # Draw outline (boundary)
-        with dpg.theme() as line_theme:
-            with dpg.theme_component(dpg.mvLineSeries):
-                dpg.add_theme_color(dpg.mvPlotCol_Line, (r, g, b, 255))
-                dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 2.0)
-        
-        # Create closed boundary
-        x_points = [bl[0], br[0], ur[0], ul[0], bl[0]]
-        z_points = [bl[1], br[1], ur[1], ul[1], bl[1]]
-        dpg.add_line_series(x_points, z_points, parent="z_axis", tag=boundary_tag)
-        dpg.bind_item_theme(boundary_tag, line_theme)
-        
-        # Calculate center position for annotation
-        avg_x = sum(point[0] for point in [bl, br, ur, ul]) / 4
-        avg_z = sum(point[1] for point in [bl, br, ur, ul]) / 4
-        
-        # Add text annotation directly to the plot (not to axis)
-        dpg.add_plot_annotation(
-            label=machine.name,
-            default_value=(avg_x, avg_z),
-            parent="main_plot",  # Changed to plot's tag
-            tag=annotation_tag,
-            color=(r, g, b, 255),
-            offset=(5, 5)
-        )
-        
-        self.logger.log_event(f"Drew boundary for machine: {machine.name}")
-
-    def remove_machine_boundary(self, machine_name):
-        """Remove the boundary and annotation for a machine"""
-        if machine_name in self.plot_tags:
-            boundary_tag, annotation_tag = self.plot_tags[machine_name]
-            try:
-                dpg.delete_item(boundary_tag)
-                dpg.delete_item(annotation_tag)
-                del self.plot_tags[machine_name]
-                self.logger.log_event(f"Removed boundary for machine: {machine_name}")
-            except Exception as e:
-                self.logger.log_event(f"Error removing boundary: {str(e)}")
-
 class ConnectionManager:
     def __init__(self, logger,game_manager):
         self.connected = False
@@ -195,6 +135,7 @@ class ConnectionManager:
         self.serverAddress = "10.229.139.24"
         self.streaming_client = None
         self.game_manager = game_manager
+        self.max_retries = 5
         
     def create_controls(self, parent):
         with dpg.group(parent=parent) as group:
@@ -259,9 +200,24 @@ class ConnectionManager:
                     self.logger.log_event("ERROR: Could not start streaming client.")
                     self.streaming_client = None
                 else:
-                    dpg.set_item_label(self.connection, "Connected!")
-                    dpg.bind_item_theme(self.connection, self.green_theme)
-                    self.logger.log_event("Connected to server")
+                    sleep(0.1)
+                    if self.streaming_client.is_alive() is False:
+                        self.connected = False
+                        tries = 1
+                        while (tries < self.max_retries and not self.streaming_client.is_alive()):
+                            self.connected = self.streaming_client.run()
+                            tries += 1
+                            sleep(0.1)
+                        if not self.streaming_client.is_alive():
+                            self.logger.log_event(f"ERROR: Could not connect to streaming client, attempted {self.max_retries} times")
+                        else:
+                            dpg.set_item_label(self.connection, f"Connected!")
+                            dpg.bind_item_theme(self.connection, self.green_theme)
+                            self.logger.log_event(f"Connected to server (after {tries} failed attempts)")
+                    else:
+                        dpg.set_item_label(self.connection, "Connected!")
+                        dpg.bind_item_theme(self.connection, self.green_theme)
+                        self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
         else:
@@ -273,32 +229,92 @@ class ConnectionManager:
             self.connected = False
 
 class PlotManager:
-    def __init__(self):
+    def __init__(self, logger):
         self.plot_tags = {}
+        self.logger = logger
 
     def create_plot(self, parent,sheight):
         with dpg.plot(label="MoCap Arena", parent=parent, height=sheight, width=-1, tag="main_plot"):
-            dpg.add_plot_axis(dpg.mvXAxis, label="X", tag="x_axis", invert=True)
-            dpg.add_plot_axis(dpg.mvYAxis, label="Z", tag="z_axis", invert=True)
+            dpg.add_plot_axis(dpg.mvYAxis, label="X", tag="x_axis", invert=True)
+            dpg.add_plot_axis(dpg.mvXAxis, label="Z", tag="z_axis", invert=True)
             
-            dpg.set_axis_limits("x_axis", -2, 4)
-            dpg.set_axis_limits("z_axis", -5, 5)
+            dpg.set_axis_limits("x_axis", -4, 3)
+            dpg.set_axis_limits("z_axis", -1, 4.5)
             
             # Red dot
             with dpg.theme() as red_theme:
                 with dpg.theme_component(dpg.mvScatterSeries):
                     dpg.add_theme_color(dpg.mvPlotCol_Line, (255, 0, 0))
                     dpg.add_theme_style(dpg.mvPlotStyleVar_Marker, dpg.mvPlotMarker_Circle)
-            dpg.add_scatter_series([2], [2], parent="z_axis", tag="red_dot")
+            dpg.add_scatter_series([2], [2], parent="x_axis", tag="red_dot")
             dpg.bind_item_theme("red_dot", red_theme)
-            
-            # Green square
-            with dpg.theme() as green_theme:
-                with dpg.theme_component(dpg.mvScatterSeries):
-                    dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 255, 0))
-                    dpg.add_theme_style(dpg.mvPlotStyleVar_Marker, dpg.mvPlotMarker_Square)
-            dpg.add_scatter_series([-2], [-2], parent="z_axis", tag="green_square")
-            dpg.bind_item_theme("green_square", green_theme)
+    
+    def draw_machine_boundary(self, machine):
+        """Draw a bounding box with machine name annotation"""
+        import random
+        r = random.randint(50, 200)
+        g = random.randint(50, 200)
+        b = random.randint(50, 200)
+        
+        name_safe = machine.name.replace(" ", "_")
+        boundary_tag = f"boundary_{name_safe}"
+        annotation_tag = f"annotation_{name_safe}"
+        
+        # Get coordinates
+        bl = machine.bottomLeft
+        br = machine.bottomRight
+        ul = machine.upperLeft
+        ur = machine.upperRight
+        
+        # Store tags for later deletion
+        self.plot_tags[machine.name] = (boundary_tag, annotation_tag)
+
+        # Draw outline (boundary)
+        with dpg.theme() as line_theme:
+            with dpg.theme_component(dpg.mvLineSeries):
+                dpg.add_theme_color(dpg.mvPlotCol_Line, (r, g, b, 255))
+                dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 2.0)
+        
+        # Create closed boundary
+        x_points = [bl[0], br[0], ur[0], ul[0], bl[0]]
+        z_points = [bl[1], br[1], ur[1], ul[1], bl[1]]
+        dpg.add_line_series(z_points, x_points, parent="x_axis", tag=boundary_tag)
+        dpg.bind_item_theme(boundary_tag, line_theme)
+        
+        # Calculate center position for annotation
+        avg_x = sum(point[0] for point in [bl, br, ur, ul]) / 4
+        avg_z = sum(point[1] for point in [bl, br, ur, ul]) / 4
+        
+        # Add text annotation directly to the plot (not to axis)
+        dpg.add_plot_annotation(
+            label=machine.name,
+            default_value=(avg_z,avg_x),
+            parent="main_plot",  # Changed to plot's tag
+            tag=annotation_tag,
+            color=(r, g, b, 255),
+            offset=(5, 5)
+        )
+        
+        self.logger.log_event(f"Drew boundary for machine: {machine.name}")
+
+    def remove_machine_boundary(self, machine_name):
+        """Remove the boundary and annotation for a machine"""
+        if machine_name in self.plot_tags:
+            boundary_tag, annotation_tag = self.plot_tags[machine_name]
+            try:
+                dpg.delete_item(boundary_tag)
+                dpg.delete_item(annotation_tag)
+                del self.plot_tags[machine_name]
+                self.logger.log_event(f"Removed boundary for machine: {machine_name}")
+            except Exception as e:
+                self.logger.log_event(f"Error removing boundary: {str(e)}")
+
+    def draw_foyer_line(self,right_point, left_point):
+        """Renders the foyer dision line"""
+        z_points = [left_point[1],right_point[1]]
+        x_points = [left_point[0],right_point[0]]
+        dpg.add_line_series(z_points, x_points, parent="x_axis", tag="foyer_line")
+
 
 class AppLogger:
     def __init__(self):
@@ -321,16 +337,29 @@ class AppLogger:
         dpg.set_value("log_output", "\n".join(self.log_content[-100:]))
 
 class GameManager:
-    def __init__(self, logger, machine_manager):
+    def __init__(self, logger, machine_manager, plot_manager,connection_manager):
         self.logger = logger
         self.machine_manager = machine_manager
+        self.plot_manager = plot_manager
+        self.connection_manager = connection_manager
         self.game = Game(B=2, M=0.1)
-        self.current_rigid_body_pos = (0, 0)
-        
-        self.game.set_foyer_line([[1.1,-0.3],[1.1,4]])
-        self.game.add_machine(Machine("m1",0.5,[-2.485,2.858],[-2.425,2.228],[-3.091,2.890],[-3.091,2.228]))
-        self.game.add_machine(Machine("m2",0.5,[-2.425,2.228],[-2.425,1.600],[-3.091,2.228],[-3.091,1.600]))
 
+    def configure_mocap_enviorement(self):
+        self.game.set_foyer_line([[0.468338,-0.795071],[0.573371,4.567555]])
+        self.plot_manager.draw_foyer_line([0.468338,-0.795071],[0.573371,4.567555])
+        m1 = Machine("m1",0.5,[-2.456429,2.816329],[-2.472943,2.209420],[-3.058704,2.829714],[-3.078690,2.227182])
+        m2 = Machine("m2",0.5,[-2.471038,2.210003],[-2.491827,1.602495],[-3.077954,2.226916],[-3.095206,1.617023])
+        m3 = Machine("m3",0.5,[-2.491006,1.602350],[-2.504974,0.998993],[-3.099614,1.612233],[-3.095562,1.028964])
+        m4 = Machine("m4",0.5,[-2.499513,1.007894],[-2.523157,0.395306],[-3.096367,1.028808],[-3.096367,0.395306])
+        self.game.add_machine(m1)
+        self.plot_manager.draw_machine_boundary(m1)
+        self.game.add_machine(m2)
+        self.plot_manager.draw_machine_boundary(m2)
+        self.game.add_machine(m3)
+        self.plot_manager.draw_machine_boundary(m3)
+        self.game.add_machine(m4)
+        self.plot_manager.draw_machine_boundary(m4)
+        self.machine_manager.update_machine_list()
 
     def receive_new_frame(self, data_dict, mocap_data):
         # Update rigid body visualization
@@ -352,6 +381,7 @@ class GameManager:
             if current_trial.get_outcome() is not None:
                 machine_name = next(iter(current_trial.get_outcome().keys()))
                 self.logger.log_event(f"Collision detected with {machine_name}")
+                self.connection_manager.toggle_trial()
 
     def update_rigid_body_visual(self, mocap_data):
         # Extract first rigid body position
@@ -359,23 +389,25 @@ class GameManager:
         if rigid_body_list and rigid_body_list[0]:
             first_body = next(iter(rigid_body_list[0].values()))
             x, _, z = first_body[0]  # Assuming position is (x, y, z)
-            self.current_rigid_body_pos = (x, z)
             
             # Update red dot position
-            #dpg.set_value("red_dot", [x,z])
+
+            dpg.set_value("red_dot", [[z],[x]])
 
 
 class MainApp:
     def __init__(self):
         dpg.create_context()
         self.logger = AppLogger()
-        self.game_manager = GameManager(self.logger, None)
-        self.machine_manager = MachineManager(self.logger, self.game_manager)
+        self.plot_manager = PlotManager(self.logger)
+        self.game_manager = GameManager(self.logger, None, self.plot_manager,None)
+        self.machine_manager = MachineManager(self.logger, self.game_manager, self.plot_manager)
         self.connection_manager = ConnectionManager(self.logger, self.game_manager)
-        self.plot_manager = PlotManager()
-        self.game_manager.machine_manager = self.machine_manager
         
+        self.game_manager.machine_manager = self.machine_manager
+        self.game_manager.connection_manager = self.connection_manager
         self.create_layout()
+        self.game_manager.configure_mocap_enviorement()
         dpg.setup_dearpygui()
         dpg.show_viewport()
 

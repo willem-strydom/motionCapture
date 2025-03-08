@@ -1847,3 +1847,5 @@ class NatNetClient:
         self.command_thread.join()
         self.data_thread.join()
 
+    def is_alive(self):
+        return self.data_thread.is_alive()
