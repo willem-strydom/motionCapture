@@ -1,3 +1,5 @@
 tk
 matplotlib
 dearpygui
+tensorflow
+sklearn
