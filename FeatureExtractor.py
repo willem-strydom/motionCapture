@@ -55,6 +55,24 @@ class Player:
 
         print(f"Player history successfully written to {filename}")
 
+    def write_trial_to_file(trial, filename="player_history.json"):
+        history_data = []
+
+        trial_data = {
+            "prediction": trial.get_prediction(),
+            "outcome": trial.get_outcome(),
+            "pre_win_rates": trial.get_pre_win_rates(),
+            "post_win_rates": trial.get_post_win_rates(),
+            "foyer": trial.get_foyer(),
+            "walk": trial.get_walk()
+        }
+        history_data.append(trial_data)
+        
+        with open(filename, "w") as file:
+            json.dump(history_data, file, indent=4)
+
+        print(f"Trial successfully written to {filename}")
+
 class Trial:
 
     def __init__(self,machines):
@@ -178,8 +196,7 @@ class Game:
         
     def save_current_trial(self):
         trial = self.trials[-1]
-        self.player.add_to_history(trial)
-        self.player.write_history_to_file(f"trial_{trial.get_name()}.json")
+        self.player.write_trial_to_file(trial,f"trial_{trial.get_name()}.json")
 
     def receive_new_frame(self, data_dict, mocap_data):
         if not self.inTrial:
