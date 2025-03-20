@@ -1,3 +1,4 @@
+python version MUST be < 3.12 for matlab integration to function
 ```
 Simulation/                         # Files for the statistical simulation of the higher-order game models
 ├── Houses.py                       # Contains the functions for each model to be tested
