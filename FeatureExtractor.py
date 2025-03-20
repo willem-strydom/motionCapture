@@ -155,6 +155,7 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
+        self.for_training = True        # defaulting to True to minimize impact on GUI
 
     def adjust_probabilities(self,prediction,delta_list):
         self.prediction = prediction
@@ -170,15 +171,29 @@ class Game:
             
 
     def determine_adjustment(self,predicted_choice):
+        if self.for_training: # give the players a changing enviorment to react to, without any house model assumptions
+
+            while True:
+                a = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
+                b = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
+                c = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
+                d = -(a + b + c)
+                if -self.maxProbabilityAdjustment <= d <= self.maxProbabilityAdjustment:
+                    training_adjustments = [a, b, c, d]
         naiveDelta = self.maxProbabilityAdjustment / (len(self.machines)-1) # dont play w 1 machine, will divide by 0
         adjustments = {}
         sum = 0
+        i = 0
         for name,machine in self.machines.items():
-            if not name == predicted_choice:
+            if self.for_training:
+                adjustments.update({name:training_adjustments[i]})
+                i += 1
+            elif not name == predicted_choice:
                 adjustments.update({name:naiveDelta})
                 sum += naiveDelta
 
-        adjustments.update({predicted_choice: -sum})
+        if not self.for_training:
+            adjustments.update({predicted_choice: -sum})
         return adjustments
 
     def add_machine(self,machine):
