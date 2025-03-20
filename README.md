@@ -1,4 +1,8 @@
 python version MUST be < 3.12 for matlab integration to function
+to install the matlab engine:
+  1. navigate to your MATLAB program folder : Usually "C:\Program Files\MATLAB\version"
+  2. navigate to "MATLAB\version\extern\engines\python"
+  3. run `python setup.py install`
 ```
 Simulation/                         # Files for the statistical simulation of the higher-order game models
 ├── Houses.py                       # Contains the functions for each model to be tested
