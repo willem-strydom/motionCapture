@@ -232,7 +232,7 @@ class Game:
                 self.player.add_to_history(trial)
                 #self.inTrial = False
 
-    def parse_mocap_data(self,mocap_data):
+    def parse_mocap_skeleton_data(self,mocap_data):
         skeleton_data = mocap_data.get_skeleton_data()
         skeleton_list = skeleton_data.get_skeleton_list()
         skeleton = None
@@ -251,6 +251,29 @@ class Game:
                     rigid_body_list.append(important_data)
                 #else:
                     #print(rigid_body.get_as_string())
+                
+        return rigid_body_list
+    
+    def parse_mocap_data(self,mocap_data):
+        rigid_data = mocap_data.get_rigid_data()
+        rigid_list = rigid_data.get_rigid_list()
+        rigid_body_list = None
+        #print(skeleton_data.get_skeleton_count())
+        #print(skeleton_list)
+        if rigid_data.get_rigid_body_count() > 0:
+            #skeleton = skeleton_list[0]
+            #rigid_body_list = []
+            #for rigid_body in skeleton.get_rigid_body_list():
+                #print(rigid_body)
+            #    if rigid_body.is_valid():
+                    #print('valid')
+            #        important_data = {}
+            #        important_data.update({rigid_body.get_id():[rigid_body.get_position(),rigid_body.get_rotation()]})
+            #        rigid_body_list.append(important_data)
+                #else:
+                    #print(rigid_body.get_as_string())
+            headband = rigid_list[0]
+            rigid_body_list= [headband]
                 
         return rigid_body_list
     

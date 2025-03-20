@@ -2,4 +2,4 @@ tk
 matplotlib
 dearpygui
 tensorflow
-sklearn
+scikit-learn

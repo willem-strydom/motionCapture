@@ -311,6 +311,9 @@ class RigidBodyData:
 
     def get_rigid_body_count(self):
         return len(self.rigid_body_list)
+    
+    def get_rigid_list(self):
+        return self.rigid_body_list
 
 
     def get_as_string(self, tab_str="  ", level=0):
@@ -782,6 +785,9 @@ class MoCapData:
 
     def get_skeleton_data(self):
         return self.skeleton_data
+    
+    def get_rigid_data(self):
+        return self.rigid_body_data
 
     def set_prefix_data(self, new_prefix_data):
         self.prefix_data = new_prefix_data

@@ -163,19 +163,19 @@ if __name__ == '__main__':
     
     # Run meta-simulations.
     print("House Model: RegressionHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=1000, maxNumberOfSimulations=20,
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5,
                                               player_means=player_means, player_variances=player_variances,HouseModel=RegressionHouse)
 
-    sim_results = simulation_of_simulations(maxNumberTurns=1000, maxNumberOfSimulations=10,
+    sim_results = simulation_of_simulations(maxNumberTurns=200, maxNumberOfSimulations=5,
                                               player_means=player_means, player_variances=player_variances,HouseModel=StatespaceHouse)
 
-    sim_results = simulation_of_simulations(maxNumberTurns=1000, maxNumberOfSimulations=10,
+    sim_results = simulation_of_simulations(maxNumberTurns=200, maxNumberOfSimulations=5,
                                               player_means=player_means, player_variances=player_variances,HouseModel=VARHouse)
     print("House Model: LSTMHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=10,
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5,
                                               player_means=player_means, player_variances=player_variances,HouseModel=LSTMHouse)
     print("House Model: HeuristicAdjustmentHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=100, maxNumberOfSimulations=5,
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5,
                                               player_means=player_means, player_variances=player_variances,HouseModel=HeuristicAdjustmentHouse)
     # LSTMHouse, RegressionHouse, VARHouse, StatespaceHouse, RLHouse, ARIMAHouse, MarkovChainHouse, ClusteringHouse, NeuralNetworkHouse
     #print("House: NeuralNetworkHouse")
@@ -183,21 +183,21 @@ if __name__ == '__main__':
     #print("House: ClusteringHouse")
     #sim_results = run_simulations_for_house(maxNumberTurns=100, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=ClusteringHouse)
     print("House: MarkovChainHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=10, player_means=player_means, player_variances=player_variances,HouseModel=MarkovChainHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=MarkovChainHouse)
     print("House: ARIMAHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=100, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=ARIMAHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=ARIMAHouse)
     print("House: RLHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=20, player_means=player_means, player_variances=player_variances,HouseModel=RLHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=RLHouse)
     print("House: Exp3House")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=Exp3House)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=Exp3House)
     print("House: FPLHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=FPLHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=FPLHouse)
 
     print("House: BayesianHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=20, player_means=player_means, player_variances=player_variances,HouseModel=BayesianHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=BayesianHouse)
 
     print("House: BOBWHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=20, player_means=player_means, player_variances=player_variances,HouseModel=BOBWHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=BOBWHouse)
 
     print("House: ExpectiminimaxHouse")
-    sim_results = run_simulations_for_house(maxNumberTurns=500, maxNumberOfSimulations=20, player_means=player_means, player_variances=player_variances,HouseModel=ExpectiminimaxHouse)
+    sim_results = run_simulations_for_house(maxNumberTurns=200, maxNumberOfSimulations=5, player_means=player_means, player_variances=player_variances,HouseModel=ExpectiminimaxHouse)
