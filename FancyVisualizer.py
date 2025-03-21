@@ -213,10 +213,12 @@ class ConnectionManager:
                         else:
                             dpg.set_item_label(self.connection, f"Connected!")
                             dpg.bind_item_theme(self.connection, self.green_theme)
+                            self.streaming_client.set_print_level(0)
                             self.logger.log_event(f"Connected to server (after {tries} failed attempts)")
                     else:
                         dpg.set_item_label(self.connection, "Connected!")
                         dpg.bind_item_theme(self.connection, self.green_theme)
+                        self.streaming_client.set_print_level(0)
                         self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
@@ -367,7 +369,7 @@ class GameManager:
         
         # Process game logic
         #self.logger.log_event(f"Collision detected with {data_dict}")
-        self.game.receive_new_frame(data_dict, mocap_data)
+        #self.game.receive_new_frame(data_dict, mocap_data)
         if not self.game.behindFoyer:
             self.logger.log_event("Left Foyer!")
             self.game.behindFoyer = True
@@ -386,13 +388,8 @@ class GameManager:
     def update_rigid_body_visual(self, mocap_data):
         # Extract first rigid body position
         rigid_body_list = self.game.parse_mocap_data(mocap_data)
-        if rigid_body_list and rigid_body_list[0]:
-            first_body = next(iter(rigid_body_list[0].values()))
-            x, _, z = first_body[0]  # Assuming position is (x, y, z)
-            
-            # Update red dot position
-
-            dpg.set_value("red_dot", [[z],[x]])
+        if rigid_body_list:
+            dpg.set_value("red_dot", [[rigid_body_list['position_z']],[rigid_body_list['position_x']]])
 
 
 class MainApp:

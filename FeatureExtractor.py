@@ -1,6 +1,8 @@
 import MoCapData
 import random
 import json
+import matlab.engine
+import os
 
 class Machine:
 
@@ -55,7 +57,7 @@ class Player:
 
         print(f"Player history successfully written to {filename}")
 
-    def write_trial_to_file(trial, filename="player_history.json"):
+    def write_trial_to_file(self,trial, filename="player_history.json"):
         history_data = []
 
         trial_data = {
@@ -102,7 +104,7 @@ class Trial:
         #print(processed_data)
         #print(self.get_foyer())
         # assuming parent rigid body is first
-        current_position = next(iter(processed_data[0].values()))[0]
+        current_position = [processed_data['position_x'],processed_data['position_y'], processed_data['position_z']]
         # assuming x decreases as you go left and z decreases as you go "up"
         over_right = current_position[0] <= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
         over_left = current_position[0] <= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
@@ -137,14 +139,22 @@ class Trial:
     def get_walk(self):
         return self.walk
     
+    def get_prev_foyer_frame(self):
+        if not self.foyer: 
+            return None
+        #print(self.foyer)
+        return self.foyer.get(next(reversed(self.foyer)))
+
     def get_specific_walk_pos(self,timestamp):
-        return next(iter(self.walk.get(timestamp)[0].values()))[0]
+        processed_data = self.walk.get(timestamp)
+        current_position = [processed_data['position_x'],processed_data['position_y'], processed_data['position_z']]
+        return current_position
     
     def get_name(self):
         return next(iter(self.foyer.keys()))
 
 class Game:
-    
+
     def __init__(self,B,M):
         self.machines = {}
         self.trials = []
@@ -155,7 +165,15 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
-        self.for_training = True        # defaulting to True to minimize impact on GUI
+        self.for_training = True                    # defaulting to True to minimize impact on GUI
+        self.eng = matlab.engine.start_matlab()     # initialize matlab connection
+        self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
+        #print(self.eng.which('process_frame', nargout=1))
+        #print(os.getcwd())
+
+    def shut_down(self):
+        self.eng.rmpath(os.getcwd(),nargout=0)
+        self.eng.quit()
 
     def adjust_probabilities(self,prediction,delta_list):
         self.prediction = prediction
@@ -220,7 +238,8 @@ class Game:
         timestamp = data_dict["frame_number"]
         #print(f"reciefed frame {timestamp}")
         #print(mocap_data)
-        processed_data = self.parse_mocap_data(mocap_data)
+        streamed_data = self.parse_mocap_data(mocap_data)
+        processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=trial.get_prev_foyer_frame())
         #print(processed_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
@@ -276,23 +295,60 @@ class Game:
         #print(skeleton_data.get_skeleton_count())
         #print(skeleton_list)
         if rigid_data.get_rigid_body_count() > 0:
-            #skeleton = skeleton_list[0]
-            #rigid_body_list = []
-            #for rigid_body in skeleton.get_rigid_body_list():
-                #print(rigid_body)
-            #    if rigid_body.is_valid():
-                    #print('valid')
-            #        important_data = {}
-            #        important_data.update({rigid_body.get_id():[rigid_body.get_position(),rigid_body.get_rotation()]})
-            #        rigid_body_list.append(important_data)
-                #else:
-                    #print(rigid_body.get_as_string())
-            headband = rigid_list[0]
-            rigid_body_list= [headband]
+            #headband = {rigid_list[0].get_id():[rigid_list[0].get_position(),rigid_list[0].get_rotation()]}
+            rigid_body_list = {
+                            'position_x':rigid_list[0].get_position()[0],
+                            'position_y':rigid_list[0].get_position()[1],
+                            'position_z':rigid_list[0].get_position()[2],
+                            'rotation_x':rigid_list[0].get_rotation()[0],
+                            'rotation_y':rigid_list[0].get_rotation()[1],
+                            'rotation_z':rigid_list[0].get_rotation()[2],
+                            'rotation_w':rigid_list[0].get_rotation()[3]
+                            }
                 
         return rigid_body_list
     
+    def process_streamed_data(self,streamed_data,previous_data,timestamp):
+        streamed_data.update({'time':timestamp})
+        #print(streamed_data)
+        matlab_array = self.eng.struct(self.dict_to_struct(self.eng,streamed_data))
+        if previous_data == None:
+            previous_data = self.eng.struct()
+        else:
+            #print(f"previous_data = {previous_data}")
+            previous_data = self.eng.struct(previous_data)
+        processed_data = self.eng.process_frame(matlab_array,previous_data,nargout=1)
+        processed_dict = dict(processed_data)
+        return processed_dict
+    
+    def dict_to_struct(self,eng, data):
+        """
+        Safely create a MATLAB struct from a Python dict.
+        """
+        fields = []
+        values = []
+
+        for k, v in data.items():
+            fields.append(k)
+            if isinstance(v, (int, float)):
+                values.append(matlab.double([v]))
+            else:
+                values.append(v)
+
+        # Now dynamically call struct('field1', value1, 'field2', value2, ...)
+        args = []
+        for f, v in zip(fields, values):
+            args.append(f)
+            args.append(v)
+
+        matlab_struct = eng.struct(*args)
+        return matlab_struct
+
 class LSTM:
 
     def predict(foyer_data,machines):
         return next(iter(machines.keys())) # placeholder, returns first machine that was added
+    
+
+if __name__ == "__main__":
+    game = Game(2,0.1)
