@@ -105,9 +105,9 @@ class Trial:
         #print(self.get_foyer())
         # assuming parent rigid body is first
         current_position = [processed_data['position_x'],processed_data['position_y'], processed_data['position_z']]
-        # assuming x decreases as you go left and z decreases as you go "up"
-        over_right = current_position[0] <= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
-        over_left = current_position[0] <= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
+        # assuming x decreases as you go down and z decreases as you go left
+        over_right = current_position[0] >= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
+        over_left = current_position[0] >= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
         return over_left or over_right
             
     def set_prediction(self,prediction,postPredictionWinRates):
@@ -165,7 +165,7 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
-        self.for_training = True                    # defaulting to True to minimize impact on GUI
+        self.for_training = False                    # defaulting to True to minimize impact on GUI
         self.eng = matlab.engine.start_matlab()     # initialize matlab connection
         self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
         #print(self.eng.which('process_frame', nargout=1))
