@@ -213,12 +213,12 @@ class ConnectionManager:
                         else:
                             dpg.set_item_label(self.connection, f"Connected!")
                             dpg.bind_item_theme(self.connection, self.green_theme)
-                            self.streaming_client.set_print_level(0)
+                            #self.streaming_client.set_print_level(0)
                             self.logger.log_event(f"Connected to server (after {tries} failed attempts)")
                     else:
                         dpg.set_item_label(self.connection, "Connected!")
                         dpg.bind_item_theme(self.connection, self.green_theme)
-                        self.streaming_client.set_print_level(0)
+                        #self.streaming_client.set_print_level(0)
                         self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
@@ -237,11 +237,11 @@ class PlotManager:
 
     def create_plot(self, parent,sheight):
         with dpg.plot(label="MoCap Arena", parent=parent, height=sheight, width=-1, tag="main_plot"):
-            dpg.add_plot_axis(dpg.mvYAxis, label="X", tag="x_axis", invert=True)
-            dpg.add_plot_axis(dpg.mvXAxis, label="Z", tag="z_axis", invert=True)
+            dpg.add_plot_axis(dpg.mvYAxis, label="X", tag="x_axis", invert=False)
+            dpg.add_plot_axis(dpg.mvXAxis, label="Z", tag="z_axis", invert=False)
             
-            dpg.set_axis_limits("x_axis", -4, 3)
-            dpg.set_axis_limits("z_axis", -1, 4.5)
+            dpg.set_axis_limits("x_axis", -1.6, 1.5)
+            dpg.set_axis_limits("z_axis", -1.6, 1.6)
             
             # Red dot
             with dpg.theme() as red_theme:
@@ -347,12 +347,12 @@ class GameManager:
         self.game = Game(B=2, M=0.1)
 
     def configure_mocap_enviorement(self):
-        self.game.set_foyer_line([[0.468338,-0.795071],[0.573371,4.567555]])
-        self.plot_manager.draw_foyer_line([0.468338,-0.795071],[0.573371,4.567555])
-        m1 = Machine("m1",0.5,[-2.456429,2.816329],[-2.472943,2.209420],[-3.058704,2.829714],[-3.078690,2.227182])
-        m2 = Machine("m2",0.5,[-2.471038,2.210003],[-2.491827,1.602495],[-3.077954,2.226916],[-3.095206,1.617023])
-        m3 = Machine("m3",0.5,[-2.491006,1.602350],[-2.504974,0.998993],[-3.099614,1.612233],[-3.095562,1.028964])
-        m4 = Machine("m4",0.5,[-2.499513,1.007894],[-2.523157,0.395306],[-3.096367,1.028808],[-3.096367,0.395306])
+        self.game.set_foyer_line([[-0.869957,-1.361096],[-0.796456,1.429263]])
+        self.plot_manager.draw_foyer_line([-0.869957,-1.361096],[-0.796456,1.429263])
+        m1 = Machine("m1",0.5,[0.914461,-0.416378],[0.897491,-0.716809],[0.615168,-0.399924],[0.600168,-0.699141])
+        m2 = Machine("m2",0.5,[0.930728,-0.117966],[0.914461,-0.416378],[0.634181,-0.100121],[0.615168,-0.399924])
+        m3 = Machine("m3",0.5,[0.945728,0.181054],[0.930728,-0.117966],[0.652421,0.196054],[0.634181,-0.100121])
+        m4 = Machine("m4",0.5,[0.975101,0.483173],[0.945728,0.181054],[0.669682,0.497284],[0.652421,0.196054])
         self.game.add_machine(m1)
         self.plot_manager.draw_machine_boundary(m1)
         self.game.add_machine(m2)
@@ -369,7 +369,7 @@ class GameManager:
         
         # Process game logic
         #self.logger.log_event(f"Collision detected with {data_dict}")
-        #self.game.receive_new_frame(data_dict, mocap_data)
+        self.game.receive_new_frame(data_dict, mocap_data)
         if not self.game.behindFoyer:
             self.logger.log_event("Left Foyer!")
             self.game.behindFoyer = True

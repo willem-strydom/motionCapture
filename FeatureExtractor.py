@@ -285,6 +285,8 @@ class Game:
                     rigid_body_list.append(important_data)
                 #else:
                     #print(rigid_body.get_as_string())
+        else:
+            print(f"expected 1 rigid body, got {skeleton_data.get_skeleton_count()}")
                 
         return rigid_body_list
     
