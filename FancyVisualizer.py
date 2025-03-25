@@ -340,7 +340,8 @@ class PlotManager:
                     dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 3.0)
             dpg.add_line_series(x_vals, y_vals, parent="x_axis", tag="direction_arrow")
             dpg.bind_item_theme("direction_arrow", arrow_theme)
-        self.logger.log_event("Updated direction arrow on plot")
+        #self.logger.log_event(f"Updated direction arrow on plot for pitch:{theta}")
+        # ^ useful for getting offset. might move to dedicated "pre-trial calibration" pipeline
 
 class AppLogger:
     def __init__(self):

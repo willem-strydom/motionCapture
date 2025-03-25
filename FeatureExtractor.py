@@ -3,6 +3,7 @@ import random
 import json
 import matlab.engine
 import os
+import math
 
 class Machine:
 
@@ -310,7 +311,7 @@ class Game:
                 
         return rigid_body_list
     
-    def process_streamed_data(self,streamed_data,previous_data,timestamp):
+    def old_process_streamed_data(self,streamed_data,previous_data,timestamp): # uses MATLAB, kinda large processing overhead...
         streamed_data.update({'time':timestamp})
         #print(streamed_data)
         matlab_array = self.eng.struct(self.dict_to_struct(self.eng,streamed_data))
@@ -322,6 +323,39 @@ class Game:
         processed_data = self.eng.process_frame(matlab_array,previous_data,nargout=1)
         processed_dict = dict(processed_data)
         return processed_dict
+    
+    def process_streamed_data(self,streamed_data,previous_data,timestamp):
+        theta = self.get_view_angle(streamed_data["rotation_w"],streamed_data["rotation_x"],streamed_data["rotation_y"],streamed_data["rotation_z"])
+        #streamed_data.update({'time':timestamp})
+        streamed_data.update({'theta':theta})
+        return streamed_data
+    
+    def quaternion_to_forward(self,qw, qx, qy, qz):
+        """
+        Rotate the default forward vector (1, 0, 0) by the quaternion.
+        The formula below assumes the quaternion is normalized.
+        """
+        # Using quaternion-vector multiplication:
+        # v' = q * v * q_conjugate, with v = (0, 1, 0, 0) for forward vector (1,0,0)
+        # But for efficiency, the resulting forward vector can be computed as:
+        vx = 1- 2 * (qy * qy + qz * qz)
+        vy = 2 * (qx * qy - qw * qz)
+        vz = 2 * (qx * qz + qw * qy)
+        return vx, vy, vz
+
+    def get_view_angle(self,qw, qx, qy, qz):
+        # Get the forward vector after rotation
+        vx, vy, vz = self.quaternion_to_forward(qw, qx, qy, qz)
+        
+        # Compute the angle in the x-z plane. Note: adjust arguments if your coordinate system differs.
+        angle = math.atan2(vz, vx)  # returns angle in [-pi, pi]
+        
+        # Convert to 0 - 2pi
+        if angle < 0:
+            angle += 2 * math.pi
+        # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
+        corrected_angle = (-angle + 1.8) % (2 * math.pi)
+        return corrected_angle
     
     def dict_to_struct(self,eng, data):
         """
