@@ -1,10 +1,10 @@
 function transformed_row = process_frame(current_row, prev_output)
     % Define machine centers (x, z)
     machine_centers = [
-        1, 1;   % Machine 1
-        2, 2;   % Machine 2
-        3, 3;   % Machine 3
-        4, 4    % Machine 4
+        0.914461, -0.416378;   % Machine m1
+        0.930728, -0.117966;   % Machine m2
+        0.945728,  0.181054;   % Machine m3
+        0.975101,  0.483173    % Machine m4
     ];
 
     % Convert struct to table if needed
@@ -38,24 +38,14 @@ function transformed_row = process_frame(current_row, prev_output)
     if ~isempty(prev_output)
         dt = time - prev_output.time;
 
-        if isfield(prev_output, 'position_x') && isfield(prev_output, 'position_z')
-            velocity_x = (position_x - prev_output.position_x) / dt;
-            velocity_z = (position_z - prev_output.position_z) / dt;
-        end
+        velocity_x = (position_x - prev_output.position_x) / dt;
+        velocity_z = (position_z - prev_output.position_z) / dt;
 
-        if isfield(prev_output, 'velocity_x') && ~isnan(velocity_x)
-            acceleration_x = (velocity_x - prev_output.velocity_x) / dt;
-        end
-        if isfield(prev_output, 'velocity_z') && ~isnan(velocity_z)
-            acceleration_z = (velocity_z - prev_output.velocity_z) / dt;
-        end
+        acceleration_x = (velocity_x - prev_output.velocity_x) / dt;
+        acceleration_z = (velocity_z - prev_output.velocity_z) / dt;
 
-        if isfield(prev_output, 'theta')
-            theta_dot = (theta - prev_output.theta) / dt;
-        end
-        if isfield(prev_output, 'theta_dot') && ~isnan(theta_dot)
-            theta_dot_dot = (theta_dot - prev_output.theta_dot) / dt;
-        end
+        theta_dot = (theta - prev_output.theta) / dt;
+        theta_dot_dot = (theta_dot - prev_output.theta_dot) / dt;
     end
 
     % Compute theta_1 to theta_4 (angle between yaw direction and machine vector)

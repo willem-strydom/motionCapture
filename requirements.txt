@@ -4,3 +4,4 @@ dearpygui
 tensorflow
 scikit-learn
 statsmodels
+torch

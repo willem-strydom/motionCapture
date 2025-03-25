@@ -4,9 +4,10 @@ import threading
 import textwrap
 from time import time,sleep
 from FeatureExtractor import Machine, Game, Player, Trial
+import math
 
 class MachineManager:
-    def __init__(self, logger, game_manager,plot_manager):
+    def __init__(self, logger, game_manager, plot_manager):
         self.game_manager = game_manager
         self.plot_manager = plot_manager
         self.current_selected = None
@@ -38,30 +39,28 @@ class MachineManager:
                     dpg.add_listbox(tag="machine_list", items=[], callback=self.select_machine)
 
     def add_machine(self):
+        name = dpg.get_value("machine_name")
+        win_chance = dpg.get_value("win_chance")
+        coords = [dpg.get_value(tag) for tag in [
+            "Bottom_Left_X", "Bottom_Left_Z",
+            "Bottom_Right_X", "Bottom_Right_Z",
+            "Upper_Left_X", "Upper_Left_Z",
+            "Upper_Right_X", "Upper_Right_Z"
+        ]]
         
-            name = dpg.get_value("machine_name")
-            win_chance = dpg.get_value("win_chance")
-            coords = [dpg.get_value(tag) for tag in [
-                "Bottom_Left_X", "Bottom_Left_Z",
-                "Bottom_Right_X", "Bottom_Right_Z",
-                "Upper_Left_X", "Upper_Left_Z",
-                "Upper_Right_X", "Upper_Right_Z"
-            ]]
-            
-            new_machine = Machine(
-                name=name,
-                winChance=win_chance,
-                bottomLeft=(coords[0], coords[1]),
-                bottomRight=(coords[2], coords[3]),
-                upperLeft=(coords[4], coords[5]),
-                upperRight=(coords[6], coords[7])
-            )
-            
-            self.game_manager.game.add_machine(new_machine)
-            self.update_machine_list()
-            self.plot_manager.draw_machine_boundary(new_machine)
-            self.logger.log_event(f"Added machine: {name}")
-
+        new_machine = Machine(
+            name=name,
+            winChance=win_chance,
+            bottomLeft=(coords[0], coords[1]),
+            bottomRight=(coords[2], coords[3]),
+            upperLeft=(coords[4], coords[5]),
+            upperRight=(coords[6], coords[7])
+        )
+        
+        self.game_manager.game.add_machine(new_machine)
+        self.update_machine_list()
+        self.plot_manager.draw_machine_boundary(new_machine)
+        self.logger.log_event(f"Added machine: {name}")
 
     def update_machine(self):
         if self.current_selected:
@@ -191,8 +190,6 @@ class ConnectionManager:
             # Configure the streaming client to call our data handlers.
             self.streaming_client.new_frame_listener = self.game_manager.receive_new_frame
             
-            #self.streaming_client.rigid_body_listener = None
-
             # This will run perpetually, and operate on a separate thread.
             try:
                 self.connected = self.streaming_client.run()
@@ -213,12 +210,10 @@ class ConnectionManager:
                         else:
                             dpg.set_item_label(self.connection, f"Connected!")
                             dpg.bind_item_theme(self.connection, self.green_theme)
-                            #self.streaming_client.set_print_level(0)
                             self.logger.log_event(f"Connected to server (after {tries} failed attempts)")
                     else:
                         dpg.set_item_label(self.connection, "Connected!")
                         dpg.bind_item_theme(self.connection, self.green_theme)
-                        #self.streaming_client.set_print_level(0)
                         self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
@@ -240,7 +235,7 @@ class PlotManager:
             dpg.add_plot_axis(dpg.mvYAxis, label="X", tag="x_axis", invert=False)
             dpg.add_plot_axis(dpg.mvXAxis, label="Z", tag="z_axis", invert=False)
             
-            dpg.set_axis_limits("x_axis", -1.6, 1.5)
+            dpg.set_axis_limits("x_axis", -2, 1.5)
             dpg.set_axis_limits("z_axis", -1.6, 1.6)
             
             # Red dot
@@ -317,6 +312,35 @@ class PlotManager:
         x_points = [left_point[0],right_point[0]]
         dpg.add_line_series(z_points, x_points, parent="x_axis", tag="foyer_line")
 
+    def update_direction_arrow(self, base_z, base_x, theta, arrow_length=0.1):
+        """
+        Draw or update an arrow indicating the direction.
+        World coordinates: (position_x, position_z)
+        Plot coordinates: (base_z, base_x)
+        Assuming theta is measured in world coordinates where 0 rad points to positive x.
+        Arrow tip is calculated by:
+            tip_x (world) = position_x + cos(theta) * arrow_length
+            tip_z (world) = position_z + sin(theta) * arrow_length
+        Mapped to plot: (tip_z, tip_x)
+        """
+        tip_world_x = base_x + math.cos(theta) * arrow_length
+        tip_world_z = base_z + math.sin(theta) * arrow_length
+
+        # Create data for the line series: from base to tip in plot coordinates
+        x_vals = [base_z, tip_world_z]
+        y_vals = [base_x, tip_world_x]
+
+        if dpg.does_item_exist("direction_arrow"):
+            dpg.set_value("direction_arrow", [x_vals, y_vals])
+        else:
+            # Add arrow as a line series with an arrow-like theme
+            with dpg.theme() as arrow_theme:
+                with dpg.theme_component(dpg.mvLineSeries):
+                    dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 0, 255, 255))
+                    dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, 3.0)
+            dpg.add_line_series(x_vals, y_vals, parent="x_axis", tag="direction_arrow")
+            dpg.bind_item_theme("direction_arrow", arrow_theme)
+        self.logger.log_event("Updated direction arrow on plot")
 
 class AppLogger:
     def __init__(self):
@@ -365,18 +389,16 @@ class GameManager:
 
     def receive_new_frame(self, data_dict, mocap_data):
         # Update rigid body visualization
-        self.update_rigid_body_visual(mocap_data)
+        self.update_rigid_body_visual(data_dict, mocap_data)
         
         # Process game logic
-        #self.logger.log_event(f"Collision detected with {data_dict}")
         self.game.receive_new_frame(data_dict, mocap_data)
         if not self.game.behindFoyer:
             self.logger.log_event("Left Foyer!")
             self.game.behindFoyer = True
-        if self.game.playMachine != None:
+        if self.game.playMachine is not None:
             self.logger.log_event(f"Played machine {self.game.playMachine}")
         
-        #print(mocap_data)
         # Check for collision events
         if self.game.inTrial and self.game.trials:
             current_trial = self.game.trials[-1]
@@ -385,12 +407,23 @@ class GameManager:
                 self.logger.log_event(f"Collision detected with {machine_name}")
                 self.connection_manager.toggle_trial()
 
-    def update_rigid_body_visual(self, mocap_data):
-        # Extract first rigid body position
-        rigid_body_list = self.game.parse_mocap_data(mocap_data)
-        if rigid_body_list:
-            dpg.set_value("red_dot", [[rigid_body_list['position_z']],[rigid_body_list['position_x']]])
-
+    def update_rigid_body_visual(self, data_dict, mocap_data):
+        # Extract and process mocap data
+        streamed_data = self.game.parse_mocap_data(mocap_data)
+        processed_data = self.game.process_streamed_data(timestamp=data_dict["frame_number"],
+                                                          streamed_data=streamed_data,
+                                                          previous_data=None)
+        
+        if processed_data:
+            # Update red dot (plot expects [position_z] and [position_x])
+            dpg.set_value("red_dot", [[processed_data['position_z']], [processed_data['position_x']]])
+            # Update direction arrow using processed theta.
+            # Mapping: world (x, z) -> plot (position_z, position_x)
+            self.plot_manager.update_direction_arrow(
+                base_z=processed_data['position_z'],
+                base_x=processed_data['position_x'],
+                theta=processed_data["theta"]
+            )
 
 class MainApp:
     def __init__(self):
@@ -421,12 +454,8 @@ class MainApp:
             
             # Right panel
             with dpg.child_window(width=-1, parent=main_group) as right_panel:
-                self.plot_manager.create_plot(right_panel,600)
-                #with dpg.child_window(height=500, parent=right_panel) as plot_panel:
+                self.plot_manager.create_plot(right_panel, 600)
                 self.logger.create_logger(right_panel)
-                
-                #with dpg.child_window(parent=right_panel) as log_panel:
-                    
 
         dpg.set_primary_window("Primary Window", True)
 
