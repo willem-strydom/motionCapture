@@ -12,33 +12,6 @@ MACHINE_CENTERS = {
     "machine4": (4, 4)
 }
 
-def quaternion_to_forward(self,qw, qx, qy, qz):
-    """
-    Rotate the default forward vector (1, 0, 0) by the quaternion.
-    The formula below assumes the quaternion is normalized.
-    """
-    # Using quaternion-vector multiplication:
-    # v' = q * v * q_conjugate, with v = (0, 1, 0, 0) for forward vector (1,0,0)
-    # But for efficiency, the resulting forward vector can be computed as:
-    vx = 1- 2 * (qy * qy + qz * qz)
-    vy = 2 * (qx * qy - qw * qz)
-    vz = 2 * (qx * qz + qw * qy)
-    return vx, vy, vz
-
-def get_view_angle(self,qw, qx, qy, qz):
-    # Get the forward vector after rotation
-    vx, vy, vz = self.quaternion_to_forward(qw, qx, qy, qz)
-    
-    # Compute the angle in the x-z plane. Note: adjust arguments if your coordinate system differs.
-    angle = math.atan2(vz, vx)  # returns angle in [-pi, pi]
-    
-    # Convert to 0 - 2pi
-    if angle < 0:
-        angle += 2 * math.pi
-    # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
-    corrected_angle = (-angle + 1.8) % (2 * math.pi)
-    return corrected_angle
-
 def compute_theta_dot(theta, prev_theta, dt):
     delta = (theta - prev_theta) % (2 * math.pi)
     if delta > math.pi:
@@ -231,7 +204,7 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
-        self.for_training = False                    # defaulting to True to minimize impact on GUI
+        self.for_training = True                    # defaulting to True to minimize impact on GUI
         self.eng = matlab.engine.start_matlab()     # initialize matlab connection
         self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
         #print(self.eng.which('process_frame', nargout=1))
@@ -242,6 +215,8 @@ class Game:
         self.eng.quit()
 
     def adjust_probabilities(self,prediction,delta_list):
+        if self.for_training:
+            return
         self.prediction = prediction
         pre_sum = 0
         post_sum = 0
@@ -256,14 +231,7 @@ class Game:
 
     def determine_adjustment(self,predicted_choice):
         if self.for_training: # give the players a changing enviorment to react to, without any house model assumptions
-
-            while True:
-                a = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
-                b = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
-                c = random.uniform(-self.maxProbabilityAdjustment, self.maxProbabilityAdjustment)
-                d = -(a + b + c)
-                if -self.maxProbabilityAdjustment <= d <= self.maxProbabilityAdjustment:
-                    training_adjustments = [a, b, c, d]
+            training_adjustments = [0,0,0,0]
         naiveDelta = self.maxProbabilityAdjustment / (len(self.machines)-1) # dont play w 1 machine, will divide by 0
         adjustments = {}
         sum = 0
@@ -356,6 +324,33 @@ class Game:
                 
         return rigid_body_list
     
+    def quaternion_to_forward(self,qw, qx, qy, qz):
+        """
+        Rotate the default forward vector (1, 0, 0) by the quaternion.
+        The formula below assumes the quaternion is normalized.
+        """
+        # Using quaternion-vector multiplication:
+        # v' = q * v * q_conjugate, with v = (0, 1, 0, 0) for forward vector (1,0,0)
+        # But for efficiency, the resulting forward vector can be computed as:
+        vx = 1- 2 * (qy * qy + qz * qz)
+        vy = 2 * (qx * qy - qw * qz)
+        vz = 2 * (qx * qz + qw * qy)
+        return vx, vy, vz
+
+    def get_view_angle(self,qw, qx, qy, qz):
+        # Get the forward vector after rotation
+        vx, vy, vz = self.quaternion_to_forward(qw, qx, qy, qz)
+        
+        # Compute the angle in the x-z plane. Note: adjust arguments if your coordinate system differs.
+        angle = math.atan2(vz, vx)  # returns angle in [-pi, pi]
+        
+        # Convert to 0 - 2pi
+        if angle < 0:
+            angle += 2 * math.pi
+        # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
+        corrected_angle = (-angle) % (2 * math.pi)
+        return corrected_angle
+    
     def parse_mocap_data(self,mocap_data):
         rigid_data = mocap_data.get_rigid_data()
         rigid_list = rigid_data.get_rigid_list()
@@ -390,7 +385,9 @@ class Game:
         return processed_dict
     
 
-    def process_streamed_data(streamed_data, previous_data, timestamp):
+    def process_streamed_data(self,streamed_data, previous_data, timestamp):
+        if not streamed_data:
+            return
         streamed_data.update({'time': timestamp})
 
         # Extract position and quaternion
@@ -399,7 +396,7 @@ class Game:
                 streamed_data['rotation_y'], streamed_data['rotation_z']]
 
         # θ (yaw angle in radians)
-        theta = get_view_angle(*quat)
+        theta = self.get_view_angle(*quat)
         streamed_data.update({'theta': theta})
 
         # Velocity & Acceleration
