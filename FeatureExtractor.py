@@ -5,6 +5,71 @@ import matlab.engine
 import os
 import math
 
+MACHINE_CENTERS = {
+    "machine1": (1, 1),
+    "machine2": (2, 2),
+    "machine3": (3, 3),
+    "machine4": (4, 4)
+}
+
+def quaternion_to_forward(self,qw, qx, qy, qz):
+    """
+    Rotate the default forward vector (1, 0, 0) by the quaternion.
+    The formula below assumes the quaternion is normalized.
+    """
+    # Using quaternion-vector multiplication:
+    # v' = q * v * q_conjugate, with v = (0, 1, 0, 0) for forward vector (1,0,0)
+    # But for efficiency, the resulting forward vector can be computed as:
+    vx = 1- 2 * (qy * qy + qz * qz)
+    vy = 2 * (qx * qy - qw * qz)
+    vz = 2 * (qx * qz + qw * qy)
+    return vx, vy, vz
+
+def get_view_angle(self,qw, qx, qy, qz):
+    # Get the forward vector after rotation
+    vx, vy, vz = self.quaternion_to_forward(qw, qx, qy, qz)
+    
+    # Compute the angle in the x-z plane. Note: adjust arguments if your coordinate system differs.
+    angle = math.atan2(vz, vx)  # returns angle in [-pi, pi]
+    
+    # Convert to 0 - 2pi
+    if angle < 0:
+        angle += 2 * math.pi
+    # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
+    corrected_angle = (-angle + 1.8) % (2 * math.pi)
+    return corrected_angle
+
+def compute_theta_dot(theta, prev_theta, dt):
+    delta = (theta - prev_theta) % (2 * math.pi)
+    if delta > math.pi:
+        delta -= 2 * math.pi
+    return delta / dt
+
+def compute_velocity(pos, prev_pos, dt):
+    return [(pos[i] - prev_pos[i]) / dt for i in range(len(pos))]
+
+def compute_acceleration(vel, prev_vel, dt):
+    return [(vel[i] - prev_vel[i]) / dt for i in range(len(vel))]
+
+def compute_theta_to_machines(position, theta_angle):
+    theta_vec = [math.cos(theta_angle), math.sin(theta_angle)]
+    results = {}
+
+    for name, (mx, mz) in MACHINE_CENTERS.items():
+        dx = mx - position[0]
+        dz = mz - position[2]
+        machine_vec = [dx, dz]
+
+        norm_product = math.hypot(*theta_vec) * math.hypot(dx, dz)
+        if norm_product > 0:
+            dot_product = theta_vec[0] * machine_vec[0] + theta_vec[1] * machine_vec[1]
+            angle = math.acos(dot_product / norm_product)
+            results[name] = math.degrees(angle)
+        else:
+            results[name] = 0.0
+
+    return results
+
 class Machine:
 
     def __init__(self,name,winChance,bottomLeft,bottomRight,upperLeft,upperRight):
@@ -324,38 +389,52 @@ class Game:
         processed_dict = dict(processed_data)
         return processed_dict
     
-    def process_streamed_data(self,streamed_data,previous_data,timestamp):
-        theta = self.get_view_angle(streamed_data["rotation_w"],streamed_data["rotation_x"],streamed_data["rotation_y"],streamed_data["rotation_z"])
-        #streamed_data.update({'time':timestamp})
-        streamed_data.update({'theta':theta})
-        return streamed_data
-    
-    def quaternion_to_forward(self,qw, qx, qy, qz):
-        """
-        Rotate the default forward vector (1, 0, 0) by the quaternion.
-        The formula below assumes the quaternion is normalized.
-        """
-        # Using quaternion-vector multiplication:
-        # v' = q * v * q_conjugate, with v = (0, 1, 0, 0) for forward vector (1,0,0)
-        # But for efficiency, the resulting forward vector can be computed as:
-        vx = 1- 2 * (qy * qy + qz * qz)
-        vy = 2 * (qx * qy - qw * qz)
-        vz = 2 * (qx * qz + qw * qy)
-        return vx, vy, vz
 
-    def get_view_angle(self,qw, qx, qy, qz):
-        # Get the forward vector after rotation
-        vx, vy, vz = self.quaternion_to_forward(qw, qx, qy, qz)
-        
-        # Compute the angle in the x-z plane. Note: adjust arguments if your coordinate system differs.
-        angle = math.atan2(vz, vx)  # returns angle in [-pi, pi]
-        
-        # Convert to 0 - 2pi
-        if angle < 0:
-            angle += 2 * math.pi
-        # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
-        corrected_angle = (-angle + 1.8) % (2 * math.pi)
-        return corrected_angle
+    def process_streamed_data(streamed_data, previous_data, timestamp):
+        streamed_data.update({'time': timestamp})
+
+        # Extract position and quaternion
+        pos = [streamed_data['position_x'], streamed_data['position_y'], streamed_data['position_z']]
+        quat = [streamed_data['rotation_w'], streamed_data['rotation_x'],
+                streamed_data['rotation_y'], streamed_data['rotation_z']]
+
+        # θ (yaw angle in radians)
+        theta = get_view_angle(*quat)
+        streamed_data.update({'theta': theta})
+
+        # Velocity & Acceleration
+        if previous_data:
+            dt = timestamp - previous_data['time']
+
+            prev_pos = [previous_data['position_x'], previous_data['position_y'], previous_data['position_z']]
+            vel = compute_velocity(pos, prev_pos, dt)
+            streamed_data.update({
+                'velocity_x': vel[0],
+                'velocity_z': vel[2]
+            })
+
+            if 'velocity_x' in previous_data and 'velocity_z' in previous_data:
+                prev_vel = [previous_data['velocity_x'], 0, previous_data['velocity_z']]
+                acc = compute_acceleration(vel, prev_vel, dt)
+                streamed_data.update({
+                    'acceleration_x': acc[0],
+                    'acceleration_z': acc[2]
+                })
+
+            if 'theta' in previous_data:
+                theta_dot = compute_theta_dot(theta, previous_data['theta'], dt)
+                streamed_data.update({'theta_dot': theta_dot})
+
+                if 'theta_dot' in previous_data:
+                    theta_dot_dot = (theta_dot - previous_data['theta_dot']) / dt
+                    streamed_data.update({'theta_dot_dot': theta_dot_dot})
+
+        # θ_1 through θ_4: angle to each machine
+        angle_dict = compute_theta_to_machines(pos, theta)
+        for i, name in enumerate(["machine1", "machine2", "machine3", "machine4"], 1):
+            streamed_data.update({f'theta_{i}': angle_dict.get(name, 0)})
+
+        return streamed_data
     
     def dict_to_struct(self,eng, data):
         """
