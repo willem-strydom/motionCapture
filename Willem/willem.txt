@@ -1,0 +1,5 @@
+guestimate probabilities (knew they existed)
+eventually settled on 3, didnt expect 2 and 4 to be equal, but bad start
+3
+4,2
+1
