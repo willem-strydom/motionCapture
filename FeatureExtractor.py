@@ -477,17 +477,16 @@ class Game:
         return matlab_struct
 
 class MocapModel:
-    def __init__(self,parameters):
-        self.parameters = parameters
+    def __init__(self):
         self.n_machines = 4
-        self.max_adjustment = parameters.get('max_adjustment',0.1)
+        self.max_adjustment = 0.1
 
     def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
         raise NotImplementedError("MocapModel is abstract.")
     
 class IntegralLineOfSight(MocapModel):
-    def __init__(self,parameters):
-        super().__init__(self,parameters)
+    def __init__(self):
+        super().__init__()
 
     def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
         winrates = []
@@ -496,17 +495,16 @@ class IntegralLineOfSight(MocapModel):
         return winrates
     
 class BehavioralModel:
-    def __init__(self, parameters):
-        self.parameters = parameters
+    def __init__(self):
         self.n_machines = 4
-        self.max_adjustment = parameters.get('max_adjustment', 0.1)
+        self.max_adjustment = 0.1
 
     def adjust_winrates(self, play_history, win_history, current_winrates):
         raise NotImplementedError("BehavioralModel is abstract.")
     
 class WindowedControl(BehavioralModel):
-    def __init__(self, parameters):
-        super().__init__(parameters)
+    def __init__(self):
+        super().__init__()
         # Dummy hidden state for simulation purposes
         self.hidden_state = np.zeros(self.n_machines)
 

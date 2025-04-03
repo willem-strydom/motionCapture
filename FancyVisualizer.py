@@ -4,7 +4,7 @@ import threading
 from multiprocessing import Process
 import textwrap
 from time import time,sleep
-from FeatureExtractor import Machine, Game, Player, Trial
+from FeatureExtractor import Machine, Game, Player, Trial, WindowedControl, IntegralLineOfSight
 import math
 import requests
 
@@ -391,7 +391,7 @@ class GameManager:
         self.machine_manager = machine_manager
         self.plot_manager = plot_manager
         self.connection_manager = connection_manager
-        self.game = Game(B=2, M=0.1)
+        self.game = Game(2,0.1,WindowedControl(),IntegralLineOfSight())
 
     def configure_mocap_enviorement(self):
         self.game.set_foyer_line([[-0.869957,-1.361096],[-0.796456,1.429263]])
