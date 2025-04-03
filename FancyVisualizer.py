@@ -1,12 +1,12 @@
 import dearpygui.dearpygui as dpg
 from NatNetClient import NatNetClient
 import threading
+from multiprocessing import Process
 import textwrap
 from time import time,sleep
 from FeatureExtractor import Machine, Game, Player, Trial
 import math
-import urllib.request
-import urllib.parse
+import requests
 
 class MachineManager:
     def __init__(self, logger, game_manager, plot_manager):
@@ -41,7 +41,7 @@ class MachineManager:
                     dpg.add_listbox(tag="machine_list", items=[], callback=self.select_machine)
             
             with dpg.group():
-                dpg.add_button(label="Send Awareness", callback=self.send_awareness)
+                dpg.add_button(label="Send Awareness", callback=self.game_manager.connection_manager.send_awareness)
             with dpg.group():
                 dpg.add_input_text(tag="outcome_machine", label="Machine", width=120)
                 dpg.add_checkbox(tag="outcome_success", label="Success", default_value=True)
@@ -133,26 +133,10 @@ class MachineManager:
     def update_machine_list(self):
         dpg.configure_item("machine_list", items=list(self.game_manager.game.machines.keys()))
 
-    def send_awareness(self, sender, app_data):
-        url = "http://localhost:3000/send_awareness"
-        try:
-            response = urllib.request.urlopen(url)
-            message = response.read().decode('utf-8')
-            self.logger.log_event(message)
-        except Exception as e:
-            self.logger.log_event(f"Error sending awareness: {e}")
-
     def send_outcome(self, sender, app_data):
         machine = dpg.get_value("outcome_machine")
         success = dpg.get_value("outcome_success")
-        params = urllib.parse.urlencode({"machine": machine, "success": str(success).lower()})
-        url = f"http://localhost:3000/send_outcome?{params}"
-        try:
-            response = urllib.request.urlopen(url)
-            message = response.read().decode('utf-8')
-            self.logger.log_event(message)
-        except Exception as e:
-            self.logger.log_event(f"Error sending outcome: {e}")
+        self.game_manager.connection_manager.send_outcome(machine,success)
 
 class ConnectionManager:
     def __init__(self, logger,game_manager):
@@ -162,6 +146,7 @@ class ConnectionManager:
         self.btn = None
         self.clientAddress =  "192.168.1.127"
         self.serverAddress = "10.229.139.24"
+        self.url = "http://localhost:3000/participant"
         self.streaming_client = None
         self.game_manager = game_manager
         self.max_retries = 5
@@ -202,7 +187,7 @@ class ConnectionManager:
             self.game_manager.game.start_next_trial()
             dpg.set_item_label(self.trial, "in Trial")
             dpg.bind_item_theme(self.trial, self.green_theme)
-            #response = requests.post("http://localhost:3000/send_awareness")
+            self.send_awareness()
             self.logger.log_event("Started new trial")
         else:
             self.game_manager.game.save_current_trial()
@@ -210,6 +195,12 @@ class ConnectionManager:
             dpg.set_item_label(self.trial, "Not in Trial")
             dpg.bind_item_theme(self.trial, self.red_theme)
             self.logger.log_event("Saved last trial to disk")
+
+    def send_awareness(self):
+        requests.post(self.url, json={"event": "awareness"})
+
+    def send_outcome(self, machine, success):
+        requests.post(self.url, json={"event": "outcome","machine":machine,"success":int(success)})
 
     def toggle_connection(self):
         if not self.connected:
@@ -438,6 +429,7 @@ class GameManager:
                 machine_name = next(iter(current_trial.get_outcome().keys()))
                 win_loss = next(iter(current_trial.get_outcome().values()))
                 self.logger.log_event(f"Collision detected with {machine_name} and outcome was {win_loss}")
+                self.connection_manager.send_outcome(machine_name,win_loss)
                 self.connection_manager.toggle_trial()
 
     def update_rigid_body_visual(self, data_dict, mocap_data):
@@ -495,5 +487,5 @@ class MainApp:
         dpg.destroy_context()
 
 if __name__ == "__main__":
-    app = MainApp()
-    app.run()
+    gui = MainApp()
+    gui.run()
