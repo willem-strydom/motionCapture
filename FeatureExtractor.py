@@ -4,12 +4,13 @@ import json
 import matlab.engine
 import os
 import math
+import numpy as np
 
 MACHINE_CENTERS = {
-    "machine1": (1, 1),
-    "machine2": (2, 2),
-    "machine3": (3, 3),
-    "machine4": (4, 4)
+    "machine1": (0.914461, -0.416378),
+    "machine2": (0.930728, -0.117966),
+    "machine3": (0.945728,  0.181054),
+    "machine4": (0.975101,  0.483173)
 }
 
 def compute_theta_dot(theta, prev_theta, dt):
@@ -74,9 +75,17 @@ class Player:
 
     def __init__(self):
         self.history = []
+        self.play_history = []
 
     def add_to_history(self,trial):
         self.history.append(trial)
+        self.play_history.append(trial.get_outcome)
+
+    def get_play_history(self):
+        return self.play_history.keys()
+    
+    def get_win_history(self):
+        return self.play_history.values()
 
     def write_history_to_file(self, filename="player_history.json"):
         history_data = []
@@ -194,7 +203,7 @@ class Trial:
 
 class Game:
 
-    def __init__(self,B,M):
+    def __init__(self,B,M,behavioralModel,mocapModel):
         self.machines = {}
         self.trials = []
         self.player = Player()
@@ -205,6 +214,8 @@ class Game:
         self.behindFoyer = True
         self.playMachine = None
         self.for_training = True                    # defaulting to True to minimize impact on GUI
+        self.behavioralModel = behavioralModel
+        self.mocapModel = mocapModel
         self.eng = matlab.engine.start_matlab()     # initialize matlab connection
         self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
         #print(self.eng.which('process_frame', nargout=1))
@@ -214,7 +225,7 @@ class Game:
         self.eng.rmpath(os.getcwd(),nargout=0)
         self.eng.quit()
 
-    def adjust_probabilities(self,prediction,delta_list):
+    def old_adjust_probabilities(self,prediction,delta_list):
         if self.for_training:
             return
         self.prediction = prediction
@@ -227,7 +238,17 @@ class Game:
             post_sum += new_rate
         if pre_sum != post_sum:
             self.machines[prediction].set_win_chance(self.machines[prediction].get_win_chance()+ pre_sum - post_sum)
-            
+    
+    def adjust_probabilities(self,delta_list):
+        for machine, delta in zip(self.machines.values(), delta_list):
+            new_rate = machine.get_win_chance() + delta
+            machine.set_win_chance(new_rate)
+
+    def get_winrates(self):
+        winrates = []
+        for machine in self.machines:
+            winrates.append(machine.get_win_chance())
+        return winrates
 
     def determine_adjustment(self,predicted_choice):
         if self.for_training: # give the players a changing enviorment to react to, without any house model assumptions
@@ -280,11 +301,8 @@ class Game:
             if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
                 self.behindFoyer = False
                 # placeholder pipeline for predicting the machine to be played
-                prediction = LSTM.predict(trial.get_foyer(),self.machines)
-                # placeholder pipeline for determining how to adjust the machine probabilities based on prediction
-                adjustments = self.determine_adjustment(prediction)
-                trial.set_prediction(prediction,adjustments)
-                self.adjust_probabilities(prediction,adjustments)
+                adjustments = self.mocapModel.adjust_winrates(trial.get_foyer(),self.player.get_play_history,self.player.get_win_history,self.get_winrates)
+                self.adjust_probabilities(adjustments)
                 # update walk history so we can later identify the "crossing point" by matching timestamps between arrays
                 trial.update_walk(timestamp,processed_data)
         else:
@@ -298,6 +316,8 @@ class Game:
                 self.playingMachine = playMachine
                 trial.evaluate(playMachine)
                 self.player.add_to_history(trial)
+                winrateAdjustments = self.behavioralModel.adjust_winrates(self.player.get_play_history,self.player.get_win_history,self.get_winrates)
+                self.adjust_probabilities(winrateAdjustments)
                 #self.inTrial = False
 
     def parse_mocap_skeleton_data(self,mocap_data):
@@ -456,11 +476,58 @@ class Game:
         matlab_struct = eng.struct(*args)
         return matlab_struct
 
-class LSTM:
+class MocapModel:
+    def __init__(self,parameters):
+        self.parameters = parameters
+        self.n_machines = 4
+        self.max_adjustment = parameters.get('max_adjustment',0.1)
 
-    def predict(foyer_data,machines):
-        return next(iter(machines.keys())) # placeholder, returns first machine that was added
+    def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
+        raise NotImplementedError("MocapModel is abstract.")
+    
+class IntegralLineOfSight(MocapModel):
+    def __init__(self,parameters):
+        super().__init__(self,parameters)
+
+    def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
+        winrates = []
+        for i in range(self.n_machines):
+            winrates.append(0)
+        return winrates
+    
+class BehavioralModel:
+    def __init__(self, parameters):
+        self.parameters = parameters
+        self.n_machines = 4
+        self.max_adjustment = parameters.get('max_adjustment', 0.1)
+
+    def adjust_winrates(self, play_history, win_history, current_winrates):
+        raise NotImplementedError("BehavioralModel is abstract.")
+    
+class WindowedControl(BehavioralModel):
+    def __init__(self, parameters):
+        super().__init__(parameters)
+        # Dummy hidden state for simulation purposes
+        self.hidden_state = np.zeros(self.n_machines)
+
+    def adjust_winrates(self, play_history, win_history, current_winrates):
+        # Use recent performance per machine to drive adjustment.
+        adjustments = np.zeros(self.n_machines)
+        for i in range(self.n_machines):
+            indices = [j for j, p in enumerate(play_history) if p == i+1]
+            if indices:
+                recent = indices[-5:] if len(indices) >= 5 else indices
+                win_rate = np.mean([1 if win_history[j] else 0 for j in recent])
+            else:
+                win_rate = 0.5
+            # “Optimism” rule: if win_rate is high, lower win chance; if low, boost it.
+            if win_rate > 0.5:
+                adjustments[i] = -self.max_adjustment * (win_rate - 0.5)
+            else:
+                adjustments[i] = self.max_adjustment * (0.5 - win_rate)
+        return np.clip(adjustments, -self.max_adjustment, self.max_adjustment)
     
 
+    
 if __name__ == "__main__":
-    game = Game(2,0.1)
+    game = Game(2,0.1,WindowedControl(),IntegralLineOfSight())
