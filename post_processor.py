@@ -1,6 +1,6 @@
 import json
 import math
-from FeatureExtractor import IntegralLineOfSight, BehavioralModel
+from FeatureExtractor import IntegralLineOfSight, WindowedControl, RegressionHouse, BayesianHouse
 def correct_angles_with_new_machine_centers(filename, correct_machine_positions):
     """
     Process a JSON file to recompute the theta angles using correct machine center positions.
@@ -29,7 +29,7 @@ def correct_angles_with_new_machine_centers(filename, correct_machine_positions)
     
     print(f"Processed and updated file: {filename}")
 
-def process_file(filename, model):
+def process_file(filename, mocap, behavioral,play_history,win_history):
     """
     Process a JSON file to extract model performance info
     
@@ -43,16 +43,19 @@ def process_file(filename, model):
         data = json.load(file)
     
     # Process each trial in the data
-    total_impact = 0
+    mocapImpact = 0
+    behavioralImpact = 0
     if isinstance(data, list):
         for trial in data:
-            total_impact += get_model_impact(model, trial)
-    else:
-        # Single trial case
-        total_impact += get_model_impact(model, trial)
-    return [total_impact, total_impact < 0]
+            mocapInstanceImpact, instanceDecision, instanceOutcome = get_mocap_impact(mocap, trial)
+            behavioralInstanceImpact,_,_ = get_behavioral_impact(behavioral,trial,play_history,win_history)
+            play_history.append(instanceDecision)
+            win_history.append(instanceOutcome)
+            behavioralImpact += behavioralInstanceImpact
+            mocapImpact += mocapInstanceImpact
+    return [mocapImpact, mocapImpact < 0],[behavioralImpact,behavioralImpact < 0],play_history,win_history
 
-def get_model_impact(model,trial):
+def get_mocap_impact(model,trial):
     i = 0
     existingWinrates = []
     for machine in iter(trial['pre_win_rates'].items()):
@@ -61,7 +64,18 @@ def get_model_impact(model,trial):
         existingWinrates.append(machine[1])
         i += 1
     adjustments = model.adjust_winrates(trial['foyer'],None,None,existingWinrates)
-    return adjustments[playerDecision]
+    return adjustments[playerDecision],playerDecision,next(iter(trial['outcome'].values()))
+
+def get_behavioral_impact(model,trial,play_history,win_history):
+    i = 0
+    existingWinrates = []
+    for machine in iter(trial['pre_win_rates'].items()):
+        if machine[0] == next(iter(trial['outcome'].keys())):
+            playerDecision = i
+        existingWinrates.append(machine[1])
+        i += 1
+    adjustments = model.adjust_winrates(play_history,win_history,existingWinrates)
+    return adjustments[playerDecision],playerDecision,next(iter(trial['outcome'].values()))
 
 def process_trial(trial, correct_positions):
     """Process a single trial's data to correct theta angles."""
@@ -118,45 +132,10 @@ def recompute_frame_angles(frame, correct_positions):
             # Update the theta value in the frame
             frame[f"theta_{i}"] = angle_degrees
 
-# We no longer need these functions since we're using the same approach as the original code
-# They are kept here as comments for reference
-
-# def quaternion_to_forward(qw, qx, qy, qz):
-#     """
-#     Convert a quaternion to a forward vector.
-#     
-#     Parameters:
-#     qw, qx, qy, qz: Quaternion components
-#     
-#     Returns:
-#     Tuple (x, y, z) representing the forward vector
-#     """
-#     # Using quaternion to rotate the forward vector
-#     vx = 1 - 2 * (qy * qy + qz * qz)
-#     vy = 2 * (qx * qy - qw * qz)
-#     vz = 2 * (qx * qz + qw * qy)
-#     
-#     return [vx, vz]  # Return 2D vector for XZ plane
-
-# def compute_signed_angle(vec1, vec2):
-#     """
-#     Calculate the signed angle between two 2D vectors.
-#     Positive angle means vec2 is to the right of vec1, negative means to the left.
-#     
-#     Parameters:
-#     vec1, vec2: Two 2D vectors [x, z]
-#     
-#     Returns:
-#     The signed angle in radians
-#     """
-#     # Implementation details removed as we're not using this function anymore
-
-# Example usage:
 if __name__ == "__main__":
     import os
     import glob
     
-    # Define the correct machine positions
     correct_positions = {
         "m1": (0.914461, -0.416378),
         "m2": (0.930728, -0.117966),
@@ -164,11 +143,7 @@ if __name__ == "__main__":
         "m4": (0.975101,  0.483173)
     }
     
-    # Process a single file
-    # correct_angles_with_new_machine_centers("player_history.json", correct_positions)
-    
-    # Process all JSON files in a directory
-    def process_directory(directory_path, model):
+    def process_directory(directory_path, mocap, behavioral):
         """
         Process all JSON files in the specified directory.
         
@@ -182,24 +157,32 @@ if __name__ == "__main__":
         print(f"Found {len(json_files)} JSON files in {directory_path}")
         
         # Process each JSON file
-        success = 0
-        impact = 0
+        mocapSuccess = 0
+        mocapImpact = 0
+        behavioralSuccess = 0
+        behavioralImpact = 0
         i = 0
+        play_history = []
+        win_history = []
         for file_path in json_files:
             #try:
                 #print(f"Processing {file_path}...")
                 #correct_angles_with_new_machine_centers(file_path, correct_positions)
-                outcome = process_file(file_path,model)
-                success += outcome[1]
-                impact += outcome[0]
+                mocapOutcome,behavioralOutcome,play_history,win_history = process_file(file_path,mocap,behavioral,play_history,win_history)
+                mocapSuccess += mocapOutcome[1]
+                mocapImpact += mocapOutcome[0]
+                behavioralSuccess += behavioralOutcome[1]
+                behavioralImpact += behavioralOutcome[0]
                 i += 1
                 #print(f"Successfully processed {file_path}")
             #except Exception as e:
                 #print(f"Error processing {file_path}: {str(e)}")
-        return [impact,success,i]
+        return [mocapImpact,mocapSuccess,i],[behavioralImpact,behavioralSuccess,i]
     
     # Example usage:
-    model = IntegralLineOfSight()
+    mocap = IntegralLineOfSight()
+    behavioral = BayesianHouse()
     for directory in ['./Willem', './Owen', './Ryan']:
-        performance = process_directory(directory, model)
-        print(f"Had total impact of{performance[0]}, and made a benificial prediction {performance[1]} times out of {performance[2]}, with an accuracy of {performance[1] / performance[2]}%")
+        mocapPerformance,behavioralPerformance = process_directory(directory, mocap,behavioral)
+        print(f"Mocap model had total impact of{mocapPerformance[0]}, and made a benificial prediction {mocapPerformance[1]} times out of {mocapPerformance[2]}, with an accuracy of {mocapPerformance[1] / mocapPerformance[2]}%")
+        print(f"Behvaioral model had total impact of{behavioralPerformance[0]}, and made a benificial prediction {behavioralPerformance[1]} times out of {behavioralPerformance[2]}, with an accuracy of {behavioralPerformance[1] / behavioralPerformance[2]}%")

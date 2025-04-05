@@ -4,7 +4,7 @@ import threading
 from multiprocessing import Process
 import textwrap
 from time import time,sleep
-from FeatureExtractor import Machine, Game, Player, Trial, WindowedControl, IntegralLineOfSight
+from FeatureExtractor import Machine, Game, Player, Trial, WindowedControl, IntegralLineOfSight, BayesianHouse
 import math
 import requests
 
@@ -46,6 +46,17 @@ class MachineManager:
                 dpg.add_input_text(tag="outcome_machine", label="Machine", width=120)
                 dpg.add_checkbox(tag="outcome_success", label="Success", default_value=True)
                 dpg.add_button(label="Send Outcome", callback=self.send_outcome)
+            with dpg.group():
+                dpg.add_input_text(tag="x", label="x", width=120)
+                dpg.add_input_text(tag="z", label="z", width=120)
+                dpg.add_input_text(tag="theta", label="theta", width=120)
+                dpg.add_button(label="Send Position", callback=self.send_position)
+            with dpg.group():
+                dpg.add_input_text(tag="adjm1", label="adjm1", width=120)
+                dpg.add_input_text(tag="adjm2", label="adjm2", width=120)
+                dpg.add_input_text(tag="adjm3", label="adjm3", width=120)
+                dpg.add_input_text(tag="adjm4", label="adjm4", width=120)
+                dpg.add_button(label="Send Position", callback=self.send_adjustments)
 
     def add_machine(self):
         name = dpg.get_value("machine_name")
@@ -138,6 +149,19 @@ class MachineManager:
         success = dpg.get_value("outcome_success")
         self.game_manager.connection_manager.send_outcome(machine,success)
 
+    def send_position(self, sender, app_data):
+        x = dpg.get_value("x")
+        z = dpg.get_value("z")
+        theta = dpg.get_value("theta")
+        self.game_manager.connection_manager.send_position(x,z,theta)
+
+    def send_adjustments(self,sender,app_data):
+        m1 = dpg.get_value("adjm1")
+        m2 = dpg.get_value("adjm2")
+        m3 = dpg.get_value("adjm3")
+        m4 = dpg.get_value("adjm4")
+        self.game_manager.connection_manager.send_adjustment(self.game_manager.game.get_winrates(),[float(m1),float(m2),float(m3),float(m4)])
+
 class ConnectionManager:
     def __init__(self, logger,game_manager):
         self.connected = False
@@ -146,7 +170,7 @@ class ConnectionManager:
         self.btn = None
         self.clientAddress =  "192.168.1.127"
         self.serverAddress = "10.229.139.24"
-        self.url = "http://localhost:3000/participant"
+        self.url = "http://localhost:3000/"
         self.streaming_client = None
         self.game_manager = game_manager
         self.max_retries = 5
@@ -197,10 +221,17 @@ class ConnectionManager:
             self.logger.log_event("Saved last trial to disk")
 
     def send_awareness(self):
-        requests.post(self.url, json={"event": "awareness"})
+        requests.post(self.url+"participant", json={"event": "awareness"})
 
     def send_outcome(self, machine, success):
-        requests.post(self.url, json={"event": "outcome","machine":machine,"success":int(success)})
+        requests.post(self.url+"participant", json={"event": "outcome","machine":machine,"success":int(success)})
+        requests.post(self.url+"spectator", json={"event": "outcome","machine":machine,"success":int(success)})
+
+    def send_position(self,x,z,theta):
+        requests.post(self.url+"spectator",json={"event":"playerPosition","x":float(x),"z":float(z),"theta":float(theta)})
+
+    def send_adjustment(self,winrates,adjustments):
+        requests.post(self.url+"spectator",json={"event":"machineAdjustment","winrates":winrates,"m1":adjustments[0],"m2":adjustments[1],"m3":adjustments[2],"m4":adjustments[3]})
 
     def toggle_connection(self):
         if not self.connected:
@@ -391,7 +422,7 @@ class GameManager:
         self.machine_manager = machine_manager
         self.plot_manager = plot_manager
         self.connection_manager = connection_manager
-        self.game = Game(2,0.1,WindowedControl(),IntegralLineOfSight())
+        self.game = Game(2,0.1,BayesianHouse(),IntegralLineOfSight())
 
     def configure_mocap_enviorement(self):
         self.game.set_foyer_line([[-0.869957,-1.361096],[-0.796456,1.429263]])

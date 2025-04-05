@@ -247,7 +247,7 @@ class Game:
 
     def get_winrates(self):
         winrates = []
-        for machine in self.machines:
+        for name,machine in iter(self.machines.items()):
             winrates.append(machine.get_win_chance())
         return winrates
 
@@ -573,7 +573,7 @@ class WindowedControl(BehavioralModel):
         # Dummy hidden state for simulation purposes
         self.hidden_state = np.zeros(self.n_machines)
 
-    def adjust_winrates(self, play_history, win_history, current_winrates):
+    def adjust_winrates(self,play_history, win_history, current_winrates):
         # Use recent performance per machine to drive adjustment.
         adjustments = np.zeros(self.n_machines)
         for i in range(self.n_machines):
@@ -597,5 +597,52 @@ class WindowedControl(BehavioralModel):
         # ^ questionable clamping...
         return adjustments
     
+class RegressionHouse(BehavioralModel):
+    def __init__(self):
+        super().__init__()
+
+    def adjust_winrates(self, play_history, win_history, current_winrates):
+        # Simulate a regression: compare observed win rates with a target (0.5) and adjust.
+        adjustments = np.zeros(self.n_machines)
+        for i in range(self.n_machines):
+            indices = [j for j, p in enumerate(play_history) if p == i+1]
+            if indices:
+                win_rate = np.mean([1 if win_history[j] else 0 for j in indices])
+            else:
+                win_rate = 0.5
+            error = win_rate - 0.5
+            adjustments[i] = -self.max_adjustment * error
+        return np.clip(adjustments, -self.max_adjustment, self.max_adjustment)
+import numpy as np
+from scipy.stats import beta
+
+class BayesianHouse(BehavioralModel):
+    def __init__(self):
+        super().__init__()
+        # Initialize Beta distribution parameters for each machine
+        self.alphas = np.ones(self.n_machines)
+        self.betas = np.ones(self.n_machines)
+
+    def adjust_winrates(self, play_history, win_history, current_winrates):
+        # Update Beta distribution parameters based on play and win history
+        for i in range(self.n_machines):
+            plays = [j for j, p in enumerate(play_history) if p == i + 1]
+            wins = sum([1 for j in plays if win_history[j]])
+            losses = len(plays) - wins
+            self.alphas[i] = wins + 1
+            self.betas[i] = losses + 1
+
+        # Calculate the expected win probability for each machine
+        expected_win_probs = [beta.mean(a, b) for a, b in zip(self.alphas, self.betas)]
+
+        confidence_sorted, indices_sorted = zip(*sorted(zip(expected_win_probs, [0,1,2,3]))) 
+        confidence_sorted = list(confidence_sorted)
+        indices_sorted = list(indices_sorted)
+        adjustments = [0,0,0,0]
+        orderedSchema = [-self.max_adjustment, -0.5*self.max_adjustment, 0.5*self.max_adjustment, self.max_adjustment]
+        for i in range(len(indices_sorted)):
+            adjustments[indices_sorted[i]] = orderedSchema[i]
+        return adjustments
+
 if __name__ == "__main__":
-    game = Game(2,0.1,WindowedControl(),IntegralLineOfSight())
+    game = Game(2,0.1,BayesianHouse(),IntegralLineOfSight())
