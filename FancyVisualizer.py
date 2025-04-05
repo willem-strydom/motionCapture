@@ -225,13 +225,12 @@ class ConnectionManager:
 
     def send_outcome(self, machine, success):
         requests.post(self.url+"participant", json={"event": "outcome","machine":machine,"success":int(success)})
-        requests.post(self.url+"spectator", json={"event": "outcome","machine":machine,"success":int(success)})
 
     def send_position(self,x,z,theta):
         requests.post(self.url+"spectator",json={"event":"playerPosition","x":float(x),"z":float(z),"theta":float(theta)})
 
     def send_adjustment(self,winrates,adjustments):
-        requests.post(self.url+"spectator",json={"event":"machineAdjustment","winrates":winrates,"m1":adjustments[0],"m2":adjustments[1],"m3":adjustments[2],"m4":adjustments[3]})
+        requests.post(self.url+"spectator",json={"event":"machineAdjustment","winrates":winrates,"adjustments":adjustments})
 
     def toggle_connection(self):
         if not self.connected:
@@ -463,6 +462,9 @@ class GameManager:
                 self.connection_manager.toggle_trial()
 
     def update_rigid_body_visual(self, processed_data):
+        # Low poll rate update for spectator website
+        if processed_data['time'] % 20 == 0:
+            self.connection_manager.send_position(processed_data['position_x'],processed_data['position_z'], processed_data['theta'])
         if processed_data:
             # Update red dot (plot expects [position_z] and [position_x])
             dpg.set_value("red_dot", [[processed_data['position_z']], [processed_data['position_x']]])
