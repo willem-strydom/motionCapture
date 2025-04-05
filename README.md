@@ -4,6 +4,7 @@ to install the matlab engine:
   2. navigate to "MATLAB\version\extern\engines\python"
   3. run `python setup.py install`
 ```
+webserver/                          # Git Submodule, contains the code for the webinterface (spectator and participant)
 Simulation/                         # Files for the statistical simulation of the higher-order game models
 ├── Houses.py                       # Contains the functions for each model to be tested
 ├── Players.py                      # Contains the functions for each model to be tested against
@@ -25,6 +26,8 @@ original_source/                    # Files created specifically for our solutio
     │                                 displayed for foyer and machines. Has interface for automated connection
     │                                 and trial recording. Console to log collision events, connection errors
     |                                 and saving success.
+    ├── post_processor.py           # Reads in all saved trial in a list of directories, and plays through what a set of behavioral and mocap models would have predicted at each adjustment point, and 
+    |                                 calculates if it was benificial or not, and sums the total impact on winrate each achieved.
     └── process_recorded_data.py    # Legacy code to read in MOTIVE exported csv and pass into MocapVisualizer
 
 old_saved_trials/               # Legacy folder that contains saved csvs directly exported from MOTIVE
