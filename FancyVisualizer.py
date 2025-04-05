@@ -411,11 +411,10 @@ class GameManager:
         self.machine_manager.update_machine_list()
 
     def receive_new_frame(self, data_dict, mocap_data):
-        # Update rigid body visualization
-        self.update_rigid_body_visual(data_dict, mocap_data)
-        
         # Process game logic
         self.game.receive_new_frame(data_dict, mocap_data)
+        # Update rigid body visualization        
+        self.update_rigid_body_visual(self.game.get_last_processed_frame())
         if not self.game.behindFoyer:
             self.logger.log_event("Left Foyer!")
             self.game.behindFoyer = True
@@ -432,11 +431,7 @@ class GameManager:
                 self.connection_manager.send_outcome(machine_name,win_loss)
                 self.connection_manager.toggle_trial()
 
-    def update_rigid_body_visual(self, data_dict, mocap_data):
-        # Extract and process mocap data
-        streamed_data = self.game.parse_mocap_data(mocap_data)
-        processed_data = self.game.process_streamed_data(streamed_data, None, data_dict["frame_number"])
-        
+    def update_rigid_body_visual(self, processed_data):
         if processed_data:
             # Update red dot (plot expects [position_z] and [position_x])
             dpg.set_value("red_dot", [[processed_data['position_z']], [processed_data['position_x']]])
