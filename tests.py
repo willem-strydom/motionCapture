@@ -139,7 +139,7 @@ class TestGame(unittest.TestCase):
         self.game.start_next_trial()
         
         # Test skeleton parsing
-        parsed_data = self.game.parse_mocap_data(mocap_data)
+        parsed_data = self.game.featureExtractor.parse_mocap_data(mocap_data)
         self.assertIsInstance(parsed_data, dict)
         #if parsed_data:  # Only check if data exists
             #self.assertIn("Position", str(parsed_data[0]))
