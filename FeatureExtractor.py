@@ -5,7 +5,8 @@ import matlab.engine
 import os
 import math
 import numpy as np
-from scipy.stats import beta
+from MocapModels import IntegralLineOfSight
+from BehavioralModels import BayesianHouse
 
 MACHINE_CENTERS = {
     "machine1": (0.914461, -0.416378),
@@ -148,8 +149,6 @@ class Trial:
         for (name,winrate),idx in zip(self.postMocapPredictionWinRates.items(),range(len(self.postMocapPredictionWinRates))):
             if idx == choice:
                 self.outcome = {name:(rollValue < winrate)}
-            else:
-                print(idx)
         return self.outcome
 
     def update_foyer(self,timestamp,rigidBodies):
@@ -172,14 +171,12 @@ class Trial:
             
     def set_mocap_prediction(self,prediction,adjustments):
         self.mocap_prediction = prediction
-        print(self.prePredictionWinRates)
         for (name,winRate),delta in zip(self.prePredictionWinRates.items(),adjustments):
             new_rate = winRate + delta
             self.postMocapPredictionWinRates[name] = new_rate
 
     def set_behavioral_prediction(self,prediction,adjustments):
         self.behavioral_prediction = prediction
-        print(self.prePredictionWinRates)
         for (name,winRate),delta in zip(self.postMocapPredictionWinRates.items(),adjustments):
             new_rate = winRate + delta
             self.postBehavioralPredictionWinRates[name] = new_rate
@@ -523,149 +520,6 @@ class Game:
         matlab_struct = eng.struct(*args)
         return matlab_struct
 
-class MocapModel:
-    def __init__(self):
-        self.n_machines = 4
-        self.max_adjustment = 0.1
-        self.house_edge = 2
-
-    def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
-        raise NotImplementedError("MocapModel is abstract.")
-    
-class IntegralLineOfSight(MocapModel):
-    def __init__(self):
-        super().__init__()
-
-    def adjust_winrates(self,foyer,play_history,win_history,current_winrates):
-        confidence = [0,0,0,0]
-        timeOffset = int(next(iter(foyer.keys()))) # each timestep is labeled with its timestamp, so offset is first sample
-
-        for timestamp,sample in iter(foyer.items()):
-            offsetTime = int(timestamp)-timeOffset
-            confidence[0] += offsetTime * sample['theta_1']
-            confidence[1] += offsetTime * sample['theta_2']
-            confidence[2] += offsetTime * sample['theta_3']
-            confidence[3] += offsetTime * sample['theta_4']
-        # pairs the confidence with machine index and sorts them. this lets us operate on their relative rankings
-        confidence_sorted, indices_sorted = zip(*sorted(zip(confidence, [0,1,2,3]))) 
-        confidence_sorted = list(confidence_sorted)
-        indices_sorted = list(indices_sorted)
-        adjustments = [0,0,0,0]
-        orderedSchema = [-self.max_adjustment, -0.5*self.max_adjustment, 0.5*self.max_adjustment, self.max_adjustment]
-        for i in range(len(indices_sorted)):
-            adjustments[indices_sorted[i]] = orderedSchema[i]
-        return adjustments
-
-    def old_adjust_winrates(self,foyer,play_history,win_history,current_winrates):
-        confidence = [0,0,0,0]
-        timeOffset = int(next(iter(foyer.keys()))) # each timestep is labeled with its timestamp, so offset is first sample
-
-        for timestamp,sample in iter(foyer.items()):
-            offsetTime = int(timestamp)-timeOffset
-            confidence[0] += offsetTime * sample['theta_1']
-            confidence[1] += offsetTime * sample['theta_2']
-            confidence[2] += offsetTime * sample['theta_3']
-            confidence[3] += offsetTime * sample['theta_4']
-        confidence = confidence / np.sum(confidence) # normalize
-        confidence = confidence - np.mean(confidence) # 0 center
-        max_adj = []
-        min_adj = []
-        proposedAdjustments = confidence * self.max_adjustment
-        for winRate in current_winrates:
-            max_adj.append(np.minimum(self.max_adjustment, 1 - winRate))
-            min_adj.append(np.maximum(-self.max_adjustment, -winRate))
-        clippedAdjustments = np.clip(proposedAdjustments, min_adj, max_adj) # ensure each adjustment will respect the winrate bounds of 0,1 and the max adjustment
-        # clipped could still be non-zero summed...
-        error = np.sum(clippedAdjustments)
-        idealCorrection = np.ones(clippedAdjustments.size) * -error / self.n_machines
-        newClipped = clippedAdjustments
-        while (error > 1e-8):
-            for i in range(clippedAdjustments.size):
-                if (min_adj[i] < clippedAdjustments[i]+idealCorrection[i] < max_adj[i]):
-                    newClipped[i] += idealCorrection[i]
-                else:
-                    correctedCorrection = max_adj[i] - clippedAdjustments[i]+idealCorrection[i] if (max_adj[i] - clippedAdjustments[i]+idealCorrection[i] < 0) else min_adj[i]-clippedAdjustments[i]+idealCorrection[i]
-                    if (i != self.n_machines-1): 
-                        newClipped[i] += idealCorrection[i] + correctedCorrection
-                        for j in range(clippedAdjustments.size - (i+1)):
-                            idealCorrection[i+j] += -correctedCorrection/(clippedAdjustments.size - (i+1))
-                    else: 
-                        idealCorrection[i] += correctedCorrection
-                        for j in range(clippedAdjustments.size):
-                            if (j != i): idealCorrection[j] += -correctedCorrection/(clippedAdjustments.size - 2)
-                        newClipped = clippedAdjustments
-                        i = clippedAdjustments.size
-                        continue
-            error = np.sum(newClipped)
-        
-        return newClipped
-    
-class BehavioralModel:
-    def __init__(self):
-        self.n_machines = 4
-        self.max_adjustment = 0.1
-        self.house_edge = 2
-
-    def adjust_winrates(self, play_history, win_history, current_winrates):
-        raise NotImplementedError("BehavioralModel is abstract.")
-    
-class WindowedControl(BehavioralModel):
-    def __init__(self):
-        super().__init__()
-        # Dummy hidden state for simulation purposes
-        self.hidden_state = np.zeros(self.n_machines)
-
-    def adjust_winrates(self,play_history, win_history, current_winrates):
-        # Use recent performance per machine to drive adjustment.
-        adjustments = np.zeros(self.n_machines)
-        for i in range(self.n_machines):
-            indices = [j for j, p in enumerate(play_history) if p == i+1]
-            if indices:
-                recent = indices[-5:] if len(indices) >= 5 else indices
-                win_rate = np.mean([1 if win_history[j] else 0 for j in recent])
-            else:
-                win_rate = 0.5
-            # “Optimism” rule: if win_rate is high, lower win chance; if low, boost it.
-            if win_rate > 0.5:
-                adjustments[i] = -self.max_adjustment * 2*(win_rate - 0.5)
-            else:
-                adjustments[i] = self.max_adjustment * (0.5 - win_rate)
-
-        adjustments -= np.mean(adjustments)
-        new_winrates = current_winrates + adjustments
-        new_winrates = np.clip(new_winrates, 0, 1)
-        new_winrates = new_winrates / np.sum(new_winrates) * self.house_edge
-        adjustments = np.clip(new_winrates-current_winrates,-self.max_adjustment,self.max_adjustment)
-        # ^ questionable clamping...
-        return adjustments
-    
-class BayesianHouse(BehavioralModel):
-    def __init__(self):
-        super().__init__()
-        # Initialize Beta distribution parameters for each machine
-        self.alphas = np.ones(self.n_machines)
-        self.betas = np.ones(self.n_machines)
-
-    def adjust_winrates(self, play_history, win_history, current_winrates):
-        # Update Beta distribution parameters based on play and win history
-        for i in range(self.n_machines):
-            plays = [j for j, p in enumerate(play_history) if p == i + 1]
-            wins = sum([1 for j in plays if win_history[j]])
-            losses = len(plays) - wins
-            self.alphas[i] = wins + 1
-            self.betas[i] = losses + 1
-
-        # Calculate the expected win probability for each machine
-        expected_win_probs = [beta.mean(a, b) for a, b in zip(self.alphas, self.betas)]
-
-        confidence_sorted, indices_sorted = zip(*sorted(zip(expected_win_probs, [0,1,2,3]))) 
-        confidence_sorted = list(confidence_sorted)
-        indices_sorted = list(indices_sorted)
-        adjustments = [0,0,0,0]
-        orderedSchema = [-self.max_adjustment, -0.5*self.max_adjustment, 0.5*self.max_adjustment, self.max_adjustment]
-        for i in range(len(indices_sorted)):
-            adjustments[indices_sorted[i]] = orderedSchema[i]
-        return adjustments
 
 if __name__ == "__main__":
     game = Game(2,0.1,BayesianHouse(),IntegralLineOfSight())

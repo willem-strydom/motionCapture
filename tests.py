@@ -3,6 +3,8 @@ import json
 import os
 from MoCapData import generate_mocap_data, generate_position_srand
 from FeatureExtractor import Machine, Player, Trial, Game
+from MocapModels import MocapModel
+from BehavioralModels import BehavioralModel
 
 class TestMachine(unittest.TestCase):
     def setUp(self):
@@ -72,41 +74,43 @@ class TestTrial(unittest.TestCase):
     def test_prediction_mechanism(self):
         # Initial setup
         initial_total = sum(self.trial.prePredictionWinRates.values())
-        adjustments = {"MachineA": -0.1, "MachineB": 0.1}
+        adjustments = [0.1,-0.1]
 
         # Apply prediction and adjustments
-        self.trial.set_prediction("MachineA", adjustments)
+        self.trial.set_mocap_prediction("MachineA", adjustments)
 
         # Verify exact sum preservation
-        post_total = sum(self.trial.postPredictionWinRates.values())
+        post_total = sum(self.trial.postMocapPredictionWinRates.values())
         self.assertEqual(post_total, initial_total, 
                         "Total probabilities should remain exactly equal to house advantage")
         
         # Verify individual machine changes using exact comparisons
-        self.assertAlmostEqual(self.trial.postPredictionWinRates["MachineA"], 
-                        self.trial.prePredictionWinRates["MachineA"] + adjustments["MachineA"])
-        self.assertAlmostEqual(self.trial.postPredictionWinRates["MachineB"], 
-                        self.trial.prePredictionWinRates["MachineB"] + adjustments["MachineB"])
+        self.assertAlmostEqual(self.trial.postMocapPredictionWinRates["MachineA"], 
+                        self.trial.prePredictionWinRates["MachineA"] + adjustments[0])
+        self.assertAlmostEqual(self.trial.postMocapPredictionWinRates["MachineB"], 
+                        self.trial.prePredictionWinRates["MachineB"] + adjustments[1])
 
 class TestGame(unittest.TestCase):
     def setUp(self):
-        self.game = Game(B=0.05, M=0.1)
-        self.machine1 = Machine("Slot1", 0.4, (10,5), (10,15), (20,5), (20,15))
-        self.machine2 = Machine("Slot2", 0.3, (25,5), (25,15), (35,5), (35,15))
-        self.game.add_machine(self.machine1)
-        self.game.add_machine(self.machine2)
+        self.game = Game(2,0.1,BehavioralModel(),MocapModel())
+        m1 = Machine("m1",0.5,[0.914461,-0.416378],[0.897491,-0.716809],[0.615168,-0.399924],[0.600168,-0.699141])
+        m2 = Machine("m2",0.5,[0.930728,-0.117966],[0.914461,-0.416378],[0.634181,-0.100121],[0.615168,-0.399924])
+        m3 = Machine("m3",0.5,[0.945728,0.181054],[0.930728,-0.117966],[0.652421,0.196054],[0.634181,-0.100121])
+        m4 = Machine("m4",0.5,[0.975101,0.483173],[0.945728,0.181054],[0.669682,0.497284],[0.652421,0.196054])
+        self.game.add_machine(m1)
+        self.game.add_machine(m2)
+        self.game.add_machine(m3)
+        self.game.add_machine(m4)
         self.game.set_foyer_line([(15,5), (15,15)])
-
+   
     def test_machine_management(self):
-        self.assertEqual(len(self.game.machines), 2)
-        self.assertIn("Slot1", self.game.machines)
+        self.assertEqual(len(self.game.machines), 4)
 
     def test_probability_adjustment(self):
         initial_houseAdvantage = 0
         for name,machine in self.game.machines.items():
             initial_houseAdvantage += machine.get_win_chance()
-        adjustments = self.game.determine_adjustment("Slot1")
-        self.game.adjust_probabilities("Slot1",adjustments)
+        self.game.adjust_probabilities([0,0.1,-0.1,0])
         actual_houseAdvantage = 0
         for name,machine in self.game.machines.items():
             actual_houseAdvantage += machine.get_win_chance()
@@ -129,16 +133,14 @@ class TestGame(unittest.TestCase):
         current_trial = self.game.trials[-1]
         self.assertGreater(len(current_trial.foyer), 0)
 
-class TestMocapIntegration(unittest.TestCase):
     def test_data_parsing(self):
         # Generate complex mocap data
         mocap_data = generate_mocap_data(frame_num=1)
-        game = Game(B=0.05, M=0.1)
-        game.start_next_trial()
+        self.game.start_next_trial()
         
         # Test skeleton parsing
-        parsed_data = game.parse_mocap_data(mocap_data)
-        self.assertIsInstance(parsed_data, list)
+        parsed_data = self.game.parse_mocap_data(mocap_data)
+        self.assertIsInstance(parsed_data, dict)
         #if parsed_data:  # Only check if data exists
             #self.assertIn("Position", str(parsed_data[0]))
 
