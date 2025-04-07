@@ -8,44 +8,6 @@ import numpy as np
 from MocapModels import IntegralLineOfSight
 from BehavioralModels import BayesianHouse
 
-MACHINE_CENTERS = {
-    "machine1": (0.914461, -0.416378),
-    "machine2": (0.930728, -0.117966),
-    "machine3": (0.945728,  0.181054),
-    "machine4": (0.975101,  0.483173)
-}
-
-def compute_theta_dot(theta, prev_theta, dt):
-    delta = (theta - prev_theta) % (2 * math.pi)
-    if delta > math.pi:
-        delta -= 2 * math.pi
-    return delta / dt
-
-def compute_velocity(pos, prev_pos, dt):
-    return [(pos[i] - prev_pos[i]) / dt for i in range(len(pos))]
-
-def compute_acceleration(vel, prev_vel, dt):
-    return [(vel[i] - prev_vel[i]) / dt for i in range(len(vel))]
-
-def compute_theta_to_machines(position, theta_angle):
-    theta_vec = [math.cos(theta_angle), math.sin(theta_angle)]
-    results = {}
-
-    for name, (mx, mz) in MACHINE_CENTERS.items():
-        dx = mx - position[0]
-        dz = mz - position[2]
-        machine_vec = [dx, dz]
-
-        norm_product = math.hypot(*theta_vec) * math.hypot(dx, dz)
-        if norm_product > 0:
-            dot_product = theta_vec[0] * machine_vec[0] + theta_vec[1] * machine_vec[1]
-            angle = math.acos(dot_product / norm_product)
-            results[name] = math.degrees(angle)
-        else:
-            results[name] = 0.0
-
-    return results
-
 class Machine:
 
     def __init__(self,name,winChance,bottomLeft,bottomRight,upperLeft,upperRight):
@@ -59,6 +21,11 @@ class Machine:
     def set_win_chance(self,updated_rate):
         self.winChance = updated_rate
 
+    def find_center(self):
+        xCenter = (self.bottomLeft[0]+self.bottomRight[0]+self.upperLeft[0]+self.upperRight[0])/4
+        zCenter = (self.bottomLeft[1]+self.bottomRight[1]+self.upperLeft[1]+self.upperRight[1])/4
+        return (xCenter,zCenter)
+
     def get_name(self):
         return self.name
 
@@ -66,7 +33,7 @@ class Machine:
         return self.winChance
     
     def check_collision(self,playerXY):
-        # assuming x decreases as you go deeper and z decreases as you go right
+        # assuming x decreases as you go closer and z decreases as you go left
         above_bottomLeft = playerXY[0] <= self.bottomLeft[0] and playerXY[2] <= self.bottomLeft[1]
         above_bottomRight = playerXY[0] <= self.bottomRight[0] and playerXY[2] >= self.bottomRight[1]
         below_upperLeft = playerXY[0] >= self.upperLeft[0] and playerXY[2] <= self.upperLeft[1]
@@ -160,11 +127,8 @@ class Trial:
     def check_out_of_foyer(self,timestamp,foyer_line):
         # foyer_line should be [(x,z),(x,z)]
         processed_data = self.foyer.get(timestamp)
-        #print(processed_data)
-        #print(self.get_foyer())
-        # assuming parent rigid body is first
         current_position = [processed_data['position_x'],processed_data['position_y'], processed_data['position_z']]
-        # assuming x decreases as you go down and z decreases as you go left
+        # assuming x decreases as you get closer and z increases as you go left
         over_right = current_position[0] >= foyer_line[0][0] and current_position[2] >= foyer_line[0][1]
         over_left = current_position[0] >= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
         return over_left or over_right
@@ -234,32 +198,19 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
-        self.for_training = False                    # defaulting to True to minimize impact on GUI
         self.behavioralModel = behavioralModel
         self.mocapModel = mocapModel
-        self.eng = matlab.engine.start_matlab()     # initialize matlab connection
-        self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
+        #self.eng = matlab.engine.start_matlab()     # initialize matlab connection
+        #self.eng.addpath(os.getcwd(),nargout=1)       # add current working director to matlab path to access local functions
         self.lastProcessedFrame = None
+        self.featureExtractor = FeatureExtractor()
         #print(self.eng.which('process_frame', nargout=1))
         #print(os.getcwd())
 
     def shut_down(self):
-        self.eng.rmpath(os.getcwd(),nargout=0)
-        self.eng.quit()
-
-    def old_adjust_probabilities(self,prediction,delta_list):
-        if self.for_training:
-            return
-        self.prediction = prediction
-        pre_sum = 0
-        post_sum = 0
-        for name,winRate in delta_list.items():
-            pre_sum += self.machines[name].get_win_chance()
-            new_rate = winRate + self.machines[name].get_win_chance()
-            self.machines[name].set_win_chance(new_rate)
-            post_sum += new_rate
-        if pre_sum != post_sum:
-            self.machines[prediction].set_win_chance(self.machines[prediction].get_win_chance()+ pre_sum - post_sum)
+        #self.eng.rmpath(os.getcwd(),nargout=0)
+        #self.eng.quit()
+        pass
     
     def adjust_probabilities(self,delta_list):
         for machine, delta in zip(self.machines.values(), delta_list):
@@ -272,27 +223,9 @@ class Game:
             winrates.append(machine.get_win_chance())
         return winrates
 
-    def determine_adjustment(self,predicted_choice):
-        if self.for_training: # give the players a changing enviorment to react to, without any house model assumptions
-            training_adjustments = [0,0,0,0]
-        naiveDelta = self.maxProbabilityAdjustment / (len(self.machines)-1) # dont play w 1 machine, will divide by 0
-        adjustments = {}
-        sum = 0
-        i = 0
-        for name,machine in self.machines.items():
-            if self.for_training:
-                adjustments.update({name:training_adjustments[i]})
-                i += 1
-            elif not name == predicted_choice:
-                adjustments.update({name:naiveDelta})
-                sum += naiveDelta
-
-        if not self.for_training:
-            adjustments.update({predicted_choice: -sum})
-        return adjustments
-
     def add_machine(self,machine):
         self.machines[machine.get_name()] = machine
+        self.featureExtractor.add_machine(machine)
 
     def set_foyer_line(self,foyer_line):
         # [Left (x,z), Right (x,z)]
@@ -313,24 +246,20 @@ class Game:
 
     def receive_new_frame(self, data_dict, mocap_data):
         timestamp = data_dict["frame_number"]
-        #print(f"reciefed frame {timestamp}")
-        #print(mocap_data)
-        streamed_data = self.parse_mocap_data(mocap_data)
+        streamed_data = self.featureExtractor.parse_mocap_data(mocap_data)
         if (len(self.trials)>0):
             trial = self.trials[-1] # most recent trial
-            processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=trial.get_prev_foyer_frame())
+            processed_data = self.featureExtractor.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=trial.get_prev_foyer_frame())
         else:
             trial = None
-            processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=None)
+            processed_data = self.featureExtractor.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=None)
         self.lastProcessedFrame = processed_data
         if not self.inTrial:
             return
-        #print(processed_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
             if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
                 self.behindFoyer = False
-                # placeholder pipeline for predicting the machine to be played
                 adjustments = self.mocapModel.adjust_winrates(trial.get_foyer(),self.player.get_play_history,self.player.get_win_history,self.get_winrates)
                 self.adjust_probabilities(adjustments)
                 min = 0
@@ -363,31 +292,14 @@ class Game:
                 trial.set_behavioral_prediction(min,adjustments)
                 self.player.add_to_history(trial)
                 self.inTrial = False
-
-    def parse_mocap_skeleton_data(self,mocap_data):
-        skeleton_data = mocap_data.get_skeleton_data()
-        skeleton_list = skeleton_data.get_skeleton_list()
-        skeleton = None
-        rigid_body_list = None
-        #print(skeleton_data.get_skeleton_count())
-        #print(skeleton_list)
-        if skeleton_data.get_skeleton_count() == 1:
-            skeleton = skeleton_list[0]
-            rigid_body_list = []
-            for rigid_body in skeleton.get_rigid_body_list():
-                #print(rigid_body)
-                if rigid_body.is_valid():
-                    #print('valid')
-                    important_data = {}
-                    important_data.update({rigid_body.get_id():[rigid_body.get_position(),rigid_body.get_rotation()]})
-                    rigid_body_list.append(important_data)
-                #else:
-                    #print(rigid_body.get_as_string())
-        else:
-            print(f"expected 1 rigid body, got {skeleton_data.get_skeleton_count()}")
-                
-        return rigid_body_list
     
+class FeatureExtractor:
+    def __init__(self):
+        self.MACHINE_CENTERS = {}
+    
+    def add_machine(self,machine):
+        self.MACHINE_CENTERS.update({machine.get_name():machine.find_center()})
+
     def quaternion_to_forward(self,qw, qx, qy, qz):
         """
         Rotate the default forward vector (1, 0, 0) by the quaternion.
@@ -412,17 +324,46 @@ class Game:
         if angle < 0:
             angle += 2 * math.pi
         # correct the angle with a mesured offset (whatever it reports when you are looking at positive x), for my tests it was -1.8 (offset is negated)
+        # we discovered if you create the rigid body with the participant looking forward, this is not needed.
         corrected_angle = (-angle) % (2 * math.pi)
         return corrected_angle
+
+    def compute_theta_dot(theta, prev_theta, dt):
+        delta = (theta - prev_theta) % (2 * math.pi)
+        if delta > math.pi:
+            delta -= 2 * math.pi
+        return delta / dt
+
+    def compute_velocity(pos, prev_pos, dt):
+        return [(pos[i] - prev_pos[i]) / dt for i in range(len(pos))]
+
+    def compute_acceleration(vel, prev_vel, dt):
+        return [(vel[i] - prev_vel[i]) / dt for i in range(len(vel))]
+
+    def compute_theta_to_machines(self,position, theta_angle):
+        theta_vec = [math.cos(theta_angle), math.sin(theta_angle)]
+        results = {}
+
+        for name, (mx, mz) in self.MACHINE_CENTERS.items():
+            dx = mx - position[0]
+            dz = mz - position[2]
+            machine_vec = [dx, dz]
+
+            norm_product = math.hypot(*theta_vec) * math.hypot(dx, dz)
+            if norm_product > 0:
+                dot_product = theta_vec[0] * machine_vec[0] + theta_vec[1] * machine_vec[1]
+                angle = math.acos(dot_product / norm_product)
+                results[name] = math.degrees(angle)
+            else:
+                results[name] = 0.0
+
+        return results
     
     def parse_mocap_data(self,mocap_data):
         rigid_data = mocap_data.get_rigid_data()
         rigid_list = rigid_data.get_rigid_list()
         rigid_body_list = None
-        #print(skeleton_data.get_skeleton_count())
-        #print(skeleton_list)
         if rigid_data.get_rigid_body_count() > 0:
-            #headband = {rigid_list[0].get_id():[rigid_list[0].get_position(),rigid_list[0].get_rotation()]}
             rigid_body_list = {
                             'position_x':rigid_list[0].get_position()[0],
                             'position_y':rigid_list[0].get_position()[1],
@@ -433,21 +374,7 @@ class Game:
                             'rotation_w':rigid_list[0].get_rotation()[3]
                             }
                 
-        return rigid_body_list
-    
-    def old_process_streamed_data(self,streamed_data,previous_data,timestamp): # uses MATLAB, kinda large processing overhead...
-        streamed_data.update({'time':timestamp})
-        #print(streamed_data)
-        matlab_array = self.eng.struct(self.dict_to_struct(self.eng,streamed_data))
-        if previous_data == None:
-            previous_data = self.eng.struct()
-        else:
-            #print(f"previous_data = {previous_data}")
-            previous_data = self.eng.struct(previous_data)
-        processed_data = self.eng.process_frame(matlab_array,previous_data,nargout=1)
-        processed_dict = dict(processed_data)
-        return processed_dict
-    
+        return rigid_body_list  
 
     def process_streamed_data(self,streamed_data, previous_data, timestamp):
         if not streamed_data:
@@ -468,7 +395,7 @@ class Game:
             dt = timestamp - previous_data['time']
 
             prev_pos = [previous_data['position_x'], previous_data['position_y'], previous_data['position_z']]
-            vel = compute_velocity(pos, prev_pos, dt)
+            vel = self.compute_velocity(pos, prev_pos, dt)
             streamed_data.update({
                 'velocity_x': vel[0],
                 'velocity_z': vel[2]
@@ -476,14 +403,14 @@ class Game:
 
             if 'velocity_x' in previous_data and 'velocity_z' in previous_data:
                 prev_vel = [previous_data['velocity_x'], 0, previous_data['velocity_z']]
-                acc = compute_acceleration(vel, prev_vel, dt)
+                acc = self.compute_acceleration(vel, prev_vel, dt)
                 streamed_data.update({
                     'acceleration_x': acc[0],
                     'acceleration_z': acc[2]
                 })
 
             if 'theta' in previous_data:
-                theta_dot = compute_theta_dot(theta, previous_data['theta'], dt)
+                theta_dot = self.compute_theta_dot(theta, previous_data['theta'], dt)
                 streamed_data.update({'theta_dot': theta_dot})
 
                 if 'theta_dot' in previous_data:
@@ -491,35 +418,11 @@ class Game:
                     streamed_data.update({'theta_dot_dot': theta_dot_dot})
 
         # θ_1 through θ_4: angle to each machine
-        angle_dict = compute_theta_to_machines(pos, theta)
+        angle_dict = self.compute_theta_to_machines(pos, theta)
         for i, name in enumerate(["machine1", "machine2", "machine3", "machine4"], 1):
             streamed_data.update({f'theta_{i}': angle_dict.get(name, 0)})
 
         return streamed_data
-    
-    def dict_to_struct(self,eng, data):
-        """
-        Safely create a MATLAB struct from a Python dict.
-        """
-        fields = []
-        values = []
-
-        for k, v in data.items():
-            fields.append(k)
-            if isinstance(v, (int, float)):
-                values.append(matlab.double([v]))
-            else:
-                values.append(v)
-
-        # Now dynamically call struct('field1', value1, 'field2', value2, ...)
-        args = []
-        for f, v in zip(fields, values):
-            args.append(f)
-            args.append(v)
-
-        matlab_struct = eng.struct(*args)
-        return matlab_struct
-
 
 if __name__ == "__main__":
     game = Game(2,0.1,BayesianHouse(),IntegralLineOfSight())
