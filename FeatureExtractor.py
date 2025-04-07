@@ -5,6 +5,7 @@ import matlab.engine
 import os
 import math
 import numpy as np
+from scipy.stats import beta
 
 MACHINE_CENTERS = {
     "machine1": (0.914461, -0.416378),
@@ -91,10 +92,12 @@ class Player:
         history_data = []
         for trial in self.history:
             trial_data = {
-                "prediction": trial.get_prediction(),
+                "mocap_prediction": trial.get_mocap_prediction(),
+                "behavioral_prediction": trial.get_behavioral_prediction(),
                 "outcome": trial.get_outcome(),
                 "pre_win_rates": trial.get_pre_win_rates(),
-                "post_win_rates": trial.get_post_win_rates(),
+                "post_mocap_win_rates": trial.get_post_mocap_win_rates(),
+                "post_behavioral_win_rates": trial.get_post_behavioral_win_rates(),
                 "foyer": trial.get_foyer(),
                 "walk": trial.get_walk()
             }
@@ -109,10 +112,12 @@ class Player:
         history_data = []
 
         trial_data = {
-            "prediction": trial.get_prediction(),
+            "mocap_prediction": trial.get_mocap_prediction(),
+            "behavioral_prediction": trial.get_behavioral_prediction(),
             "outcome": trial.get_outcome(),
             "pre_win_rates": trial.get_pre_win_rates(),
-            "post_win_rates": trial.get_post_win_rates(),
+            "post_mocap_win_rates": trial.get_post_mocap_win_rates(),
+            "post_behavioral_win_rates": trial.get_post_behavioral_win_rates(),
             "foyer": trial.get_foyer(),
             "walk": trial.get_walk()
         }
@@ -130,14 +135,21 @@ class Trial:
         self.walk = {}
         self.prePredictionWinRates = {}
         self.outcome = None
-        self.prediction = None
+        self.mocap_prediction = None
+        self.behavioral_prediction = None
         for name,machine in machines.items():
             self.prePredictionWinRates[name] = machine.get_win_chance()
-        self.postPredictionWinRates = {}
+        self.postMocapPredictionWinRates = {}
+        self.postBehavioralPredictionWinRates = {}
         
     def evaluate(self,choice):
         rollValue = random.random()
-        self.outcome = {choice:(rollValue < self.postPredictionWinRates.get(choice))}
+        self.outcome = {}
+        for (name,winrate),idx in zip(self.postMocapPredictionWinRates.items(),range(len(self.postMocapPredictionWinRates))):
+            if idx == choice:
+                self.outcome = {name:(rollValue < winrate)}
+            else:
+                print(idx)
         return self.outcome
 
     def update_foyer(self,timestamp,rigidBodies):
@@ -158,19 +170,25 @@ class Trial:
         over_left = current_position[0] >= foyer_line[1][0] and current_position[2] <= foyer_line[1][1]
         return over_left or over_right
             
-    def set_prediction(self,prediction,postPredictionWinRates):
-        self.prediction = prediction
-        pre_sum = 0
-        post_sum = 0
-        for name,winRate in self.prePredictionWinRates.items():
-            pre_sum += winRate
-            new_rate = winRate + postPredictionWinRates[name]
-            self.postPredictionWinRates[name] = new_rate
-            post_sum += new_rate
-        if pre_sum != post_sum:
-            self.postPredictionWinRates[prediction] += pre_sum - post_sum
-    def get_prediction(self):
-        return self.prediction
+    def set_mocap_prediction(self,prediction,adjustments):
+        self.mocap_prediction = prediction
+        print(self.prePredictionWinRates)
+        for (name,winRate),delta in zip(self.prePredictionWinRates.items(),adjustments):
+            new_rate = winRate + delta
+            self.postMocapPredictionWinRates[name] = new_rate
+
+    def set_behavioral_prediction(self,prediction,adjustments):
+        self.behavioral_prediction = prediction
+        print(self.prePredictionWinRates)
+        for (name,winRate),delta in zip(self.postMocapPredictionWinRates.items(),adjustments):
+            new_rate = winRate + delta
+            self.postBehavioralPredictionWinRates[name] = new_rate
+    
+    def get_mocap_prediction(self):
+        return self.mocap_prediction
+    
+    def get_behavioral_prediction(self):
+        return self.behavioral_prediction
     
     def get_outcome(self):
         return self.outcome
@@ -178,8 +196,11 @@ class Trial:
     def get_pre_win_rates(self):
         return self.prePredictionWinRates
     
-    def get_post_win_rates(self):
-        return self.postPredictionWinRates
+    def get_post_mocap_win_rates(self):
+        return self.postMocapPredictionWinRates
+    
+    def get_post_behavioral_win_rates(self):
+        return self.postBehavioralPredictionWinRates
     
     def get_foyer(self):
         return self.foyer
@@ -199,7 +220,10 @@ class Trial:
         return current_position
     
     def get_name(self):
-        return next(iter(self.foyer.keys()))
+        if (len(self.foyer)!=0):
+            return next(iter(self.foyer.keys()))
+        else:
+            return np.random.randint(1,10)
 
 class Game:
 
@@ -213,7 +237,7 @@ class Game:
         self.inTrial = False
         self.behindFoyer = True
         self.playMachine = None
-        self.for_training = True                    # defaulting to True to minimize impact on GUI
+        self.for_training = False                    # defaulting to True to minimize impact on GUI
         self.behavioralModel = behavioralModel
         self.mocapModel = mocapModel
         self.eng = matlab.engine.start_matlab()     # initialize matlab connection
@@ -295,11 +319,15 @@ class Game:
         #print(f"reciefed frame {timestamp}")
         #print(mocap_data)
         streamed_data = self.parse_mocap_data(mocap_data)
-        processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=trial.get_prev_foyer_frame())
+        if (len(self.trials)>0):
+            trial = self.trials[-1] # most recent trial
+            processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=trial.get_prev_foyer_frame())
+        else:
+            trial = None
+            processed_data = self.process_streamed_data(timestamp=timestamp,streamed_data=streamed_data,previous_data=None)
         self.lastProcessedFrame = processed_data
         if not self.inTrial:
             return
-        trial = self.trials[-1] # most recent trial
         #print(processed_data)
         if not trial.get_walk(): # we are still in foyer
             trial.update_foyer(timestamp,processed_data)
@@ -308,22 +336,36 @@ class Game:
                 # placeholder pipeline for predicting the machine to be played
                 adjustments = self.mocapModel.adjust_winrates(trial.get_foyer(),self.player.get_play_history,self.player.get_win_history,self.get_winrates)
                 self.adjust_probabilities(adjustments)
+                min = 0
+                for i in range(len(adjustments)):
+                    if (adjustments[i] < adjustments[min]):
+                        min = i
+                trial.set_mocap_prediction(min,adjustments)
                 # update walk history so we can later identify the "crossing point" by matching timestamps between arrays
                 trial.update_walk(timestamp,processed_data)
         else:
             trial.update_walk(timestamp,processed_data)
             playerXYZ = trial.get_specific_walk_pos(timestamp)
             playMachine = None
-            for name,machine in self.machines.items():
+            for name,machine,idx in zip(self.machines.items(),range(len(self.machines.items()))):
                 if machine.check_collision(playerXYZ) and playMachine == None:
-                    playMachine = name
+                    playMachine = idx
             if playMachine != None:
                 self.playingMachine = playMachine
                 trial.evaluate(playMachine)
-                self.player.add_to_history(trial)
-                winrateAdjustments = self.behavioralModel.adjust_winrates(self.player.get_play_history,self.player.get_win_history,self.get_winrates)
+                playHistory = self.player.get_play_history
+                playHistory.append(playMachine)
+                winHistory = self.player.get_win_history
+                winHistory.append(iter(next(trial.get_outcome().values())))
+                winrateAdjustments = self.behavioralModel.adjust_winrates(playHistory,winHistory,self.get_winrates)
                 self.adjust_probabilities(winrateAdjustments)
-                #self.inTrial = False
+                min = 0
+                for i in range(len(adjustments)):
+                    if (adjustments[i] < adjustments[min]):
+                        min = i
+                trial.set_behavioral_prediction(min,adjustments)
+                self.player.add_to_history(trial)
+                self.inTrial = False
 
     def parse_mocap_skeleton_data(self,mocap_data):
         skeleton_data = mocap_data.get_skeleton_data()
@@ -597,25 +639,6 @@ class WindowedControl(BehavioralModel):
         # ^ questionable clamping...
         return adjustments
     
-class RegressionHouse(BehavioralModel):
-    def __init__(self):
-        super().__init__()
-
-    def adjust_winrates(self, play_history, win_history, current_winrates):
-        # Simulate a regression: compare observed win rates with a target (0.5) and adjust.
-        adjustments = np.zeros(self.n_machines)
-        for i in range(self.n_machines):
-            indices = [j for j, p in enumerate(play_history) if p == i+1]
-            if indices:
-                win_rate = np.mean([1 if win_history[j] else 0 for j in indices])
-            else:
-                win_rate = 0.5
-            error = win_rate - 0.5
-            adjustments[i] = -self.max_adjustment * error
-        return np.clip(adjustments, -self.max_adjustment, self.max_adjustment)
-import numpy as np
-from scipy.stats import beta
-
 class BayesianHouse(BehavioralModel):
     def __init__(self):
         super().__init__()
@@ -646,3 +669,17 @@ class BayesianHouse(BehavioralModel):
 
 if __name__ == "__main__":
     game = Game(2,0.1,BayesianHouse(),IntegralLineOfSight())
+    m1 = Machine("m1",0.5,[0.914461,-0.416378],[0.897491,-0.716809],[0.615168,-0.399924],[0.600168,-0.699141])
+    m2 = Machine("m2",0.5,[0.930728,-0.117966],[0.914461,-0.416378],[0.634181,-0.100121],[0.615168,-0.399924])
+    m3 = Machine("m3",0.5,[0.945728,0.181054],[0.930728,-0.117966],[0.652421,0.196054],[0.634181,-0.100121])
+    m4 = Machine("m4",0.5,[0.975101,0.483173],[0.945728,0.181054],[0.669682,0.497284],[0.652421,0.196054])
+    game.add_machine(m1)
+    game.add_machine(m2)
+    game.add_machine(m3)
+    game.add_machine(m4)
+    game.start_next_trial()
+    game.trials[-1].set_mocap_prediction(2,[0,0.1,-0.1,0])
+    game.trials[-1].evaluate(2)
+    game.trials[-1].set_behavioral_prediction(3,[0,0.1,-0.1,0])
+    game.save_current_trial()
+    #print(game.trials[-1].get_outcome())

@@ -426,10 +426,10 @@ class GameManager:
     def configure_mocap_enviorement(self):
         self.game.set_foyer_line([[-0.869957,-1.361096],[-0.796456,1.429263]])
         self.plot_manager.draw_foyer_line([-0.869957,-1.361096],[-0.796456,1.429263])
-        m1 = Machine("m1",0.2,[0.914461,-0.416378],[0.897491,-0.716809],[0.615168,-0.399924],[0.600168,-0.699141])
-        m2 = Machine("m2",0.6,[0.930728,-0.117966],[0.914461,-0.416378],[0.634181,-0.100121],[0.615168,-0.399924])
-        m3 = Machine("m3",0.6,[0.945728,0.181054],[0.930728,-0.117966],[0.652421,0.196054],[0.634181,-0.100121])
-        m4 = Machine("m4",0.6,[0.975101,0.483173],[0.945728,0.181054],[0.669682,0.497284],[0.652421,0.196054])
+        m1 = Machine("m1",0.5,[0.914461,-0.416378],[0.897491,-0.716809],[0.615168,-0.399924],[0.600168,-0.699141])
+        m2 = Machine("m2",0.5,[0.930728,-0.117966],[0.914461,-0.416378],[0.634181,-0.100121],[0.615168,-0.399924])
+        m3 = Machine("m3",0.5,[0.945728,0.181054],[0.930728,-0.117966],[0.652421,0.196054],[0.634181,-0.100121])
+        m4 = Machine("m4",0.5,[0.975101,0.483173],[0.945728,0.181054],[0.669682,0.497284],[0.652421,0.196054])
         self.game.add_machine(m1)
         self.plot_manager.draw_machine_boundary(m1)
         self.game.add_machine(m2)
@@ -463,9 +463,9 @@ class GameManager:
 
     def update_rigid_body_visual(self, processed_data):
         # Low poll rate update for spectator website
-        if processed_data['time'] % 20 == 0:
-            self.connection_manager.send_position(processed_data['position_x'],processed_data['position_z'], processed_data['theta'])
         if processed_data:
+            if processed_data['time'] % 20 == 0:
+                self.connection_manager.send_position(processed_data['position_x'],processed_data['position_z'], processed_data['theta'])
             # Update red dot (plot expects [position_z] and [position_x])
             dpg.set_value("red_dot", [[processed_data['position_z']], [processed_data['position_x']]])
             # Update direction arrow using processed theta.

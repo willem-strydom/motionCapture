@@ -1,6 +1,6 @@
 import json
 import math
-from FeatureExtractor import IntegralLineOfSight, WindowedControl, RegressionHouse, BayesianHouse
+from FeatureExtractor import IntegralLineOfSight, WindowedControl, BayesianHouse
 def correct_angles_with_new_machine_centers(filename, correct_machine_positions):
     """
     Process a JSON file to recompute the theta angles using correct machine center positions.
