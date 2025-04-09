@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import beta
+from simplex import optimize_mab_simplex
 
 class BehavioralModel:
     def __init__(self):
@@ -58,12 +59,5 @@ class BayesianHouse(BehavioralModel):
 
         # Calculate the expected win probability for each machine
         expected_win_probs = [beta.mean(a, b) for a, b in zip(self.alphas, self.betas)]
-
-        confidence_sorted, indices_sorted = zip(*sorted(zip(expected_win_probs, [0,1,2,3]))) 
-        confidence_sorted = list(confidence_sorted)
-        indices_sorted = list(indices_sorted)
-        adjustments = [0,0,0,0]
-        orderedSchema = [-self.max_adjustment, -0.5*self.max_adjustment, 0.5*self.max_adjustment, self.max_adjustment]
-        for i in range(len(indices_sorted)):
-            adjustments[indices_sorted[i]] = orderedSchema[i]
-        return adjustments
+        confidence = expected_win_probs / np.sum(expected_win_probs) if(np.sum(expected_win_probs) > 0) else np.random.rand(4).tolist()
+        return optimize_mab_simplex(confidence,current_winrates,self.max_adjustment,self.house_edge)

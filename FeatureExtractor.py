@@ -223,7 +223,7 @@ class Game:
     def get_winrates(self):
         winrates = []
         for name,machine in iter(self.machines.items()):
-            winrates.append(machine.get_win_chance())
+            winrates.append(float(machine.get_win_chance()))
         return winrates
 
     def add_machine(self,machine):
@@ -293,7 +293,13 @@ class Game:
                 winHistory.append(next(iter(outcome.values())))
                 winrateAdjustments = self.behavioralModel.adjust_winrates(playHistory,winHistory,self.get_winrates())
                 self.adjust_probabilities(winrateAdjustments)
-                requests.post("http://localhost:3000/spectator",json={"event":"machineAdjustment","winrates":self.get_winrates(),"adjustments":winrateAdjustments})
+                
+                try:
+                    requests.post("http://localhost:3000/spectator",json={"event":"machineAdjustment","winrates":self.get_winrates(),"adjustments":winrateAdjustments.tolist()})
+                except Exception as e:
+                    print(f"error: {e}")
+                    print(f"winrates:{self.get_winrates()}, adjustments:{winrateAdjustments}")
+
                 min = 0
                 for i in range(len(winrateAdjustments)):
                     if (winrateAdjustments[i] < winrateAdjustments[min]):

@@ -23,16 +23,15 @@ class IntegralLineOfSight(MocapModel):
             confidence[1] += offsetTime * sample['theta_2']
             confidence[2] += offsetTime * sample['theta_3']
             confidence[3] += offsetTime * sample['theta_4']
-            #print(offsetTime)
-            #print(sample)
-        confidence = confidence / np.sum(confidence)
+        if (np.sum(confidence) < 1e-4):
+            confidence = np.random.rand(4).tolist()
+        else:
+            confidence = confidence / np.sum(confidence)
         confidence -= np.average(confidence)
 
         return self.confidence_to_adjustments(confidence,current_winrates)
 
     def confidence_to_adjustments(self,confidence,winrates):
-        print(f"winrates:{winrates}")
-        print(f"confidence:{confidence}")
         return optimize_mab_simplex(confidence,winrates,self.max_adjustment,self.house_edge)
     
 
