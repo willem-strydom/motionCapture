@@ -1,5 +1,5 @@
 import numpy as np
-
+from simplex import optimize_mab_simplex
 class MocapModel:
     def __init__(self):
         self.n_machines = 4
@@ -23,15 +23,18 @@ class IntegralLineOfSight(MocapModel):
             confidence[1] += offsetTime * sample['theta_2']
             confidence[2] += offsetTime * sample['theta_3']
             confidence[3] += offsetTime * sample['theta_4']
-        # pairs the confidence with machine index and sorts them. this lets us operate on their relative rankings
-        confidence_sorted, indices_sorted = zip(*sorted(zip(confidence, [0,1,2,3]))) 
-        confidence_sorted = list(confidence_sorted)
-        indices_sorted = list(indices_sorted)
-        adjustments = [0,0,0,0]
-        orderedSchema = [-self.max_adjustment, -0.5*self.max_adjustment, 0.5*self.max_adjustment, self.max_adjustment]
-        for i in range(len(indices_sorted)):
-            adjustments[indices_sorted[i]] = orderedSchema[i]
-        return adjustments
+            #print(offsetTime)
+            #print(sample)
+        confidence = confidence / np.sum(confidence)
+        confidence -= np.average(confidence)
+
+        return self.confidence_to_adjustments(confidence,current_winrates)
+
+    def confidence_to_adjustments(self,confidence,winrates):
+        print(f"winrates:{winrates}")
+        print(f"confidence:{confidence}")
+        return optimize_mab_simplex(confidence,winrates,self.max_adjustment,self.house_edge)
+    
 
     def old_adjust_winrates(self,foyer,play_history,win_history,current_winrates):
         confidence = [0,0,0,0]

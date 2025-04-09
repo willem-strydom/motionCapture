@@ -7,6 +7,7 @@ import math
 import numpy as np
 from MocapModels import IntegralLineOfSight
 from BehavioralModels import BayesianHouse
+import requests
 
 class Machine:
 
@@ -45,16 +46,18 @@ class Player:
     def __init__(self):
         self.history = []
         self.play_history = []
+        self.win_history = []
 
     def add_to_history(self,trial):
         self.history.append(trial)
-        self.play_history.append(trial.get_outcome)
+        self.play_history.append(next(iter(trial.get_outcome().keys())))
+        self.win_history.append(next(iter(trial.get_outcome().values())))
 
     def get_play_history(self):
-        return self.play_history.keys()
+        return self.play_history
     
     def get_win_history(self):
-        return self.play_history.values()
+        return self.win_history
 
     def write_history_to_file(self, filename="player_history.json"):
         history_data = []
@@ -115,7 +118,7 @@ class Trial:
         self.outcome = {}
         for (name,winrate),idx in zip(self.postMocapPredictionWinRates.items(),range(len(self.postMocapPredictionWinRates))):
             if idx == choice:
-                self.outcome = {name:(rollValue < winrate)}
+                self.outcome = {name:bool(rollValue < winrate)}
         return self.outcome
 
     def update_foyer(self,timestamp,rigidBodies):
@@ -260,38 +263,45 @@ class Game:
             trial.update_foyer(timestamp,processed_data)
             if trial.check_out_of_foyer(timestamp,self.foyer_line): # we have JUST left foyer
                 self.behindFoyer = False
-                adjustments = self.mocapModel.adjust_winrates(trial.get_foyer(),self.player.get_play_history,self.player.get_win_history,self.get_winrates)
+                adjustments = self.mocapModel.adjust_winrates(trial.get_foyer(),self.player.get_play_history(),self.player.get_win_history(),self.get_winrates())
+                #print(f"trial:{trial.get_foyer().keys()}")
+                #print(f"adjustments: {adjustments}")
+                adjustments = list(adjustments)
                 self.adjust_probabilities(adjustments)
                 min = 0
                 for i in range(len(adjustments)):
                     if (adjustments[i] < adjustments[min]):
                         min = i
                 trial.set_mocap_prediction(min,adjustments)
+                requests.post("http://localhost:3000/spectator",json={"event":"machineAdjustment","winrates":self.get_winrates(),"adjustments":adjustments})
                 # update walk history so we can later identify the "crossing point" by matching timestamps between arrays
                 trial.update_walk(timestamp,processed_data)
         else:
             trial.update_walk(timestamp,processed_data)
             playerXYZ = trial.get_specific_walk_pos(timestamp)
             playMachine = None
-            for name,machine,idx in zip(self.machines.items(),range(len(self.machines.items()))):
+            for (name,machine),idx in zip(self.machines.items(),range(len(self.machines.items()))):
                 if machine.check_collision(playerXYZ) and playMachine == None:
                     playMachine = idx
             if playMachine != None:
-                self.playingMachine = playMachine
                 trial.evaluate(playMachine)
-                playHistory = self.player.get_play_history
+                playHistory = self.player.get_play_history()
+                winHistory = self.player.get_win_history()
+                outcome = trial.get_outcome()
+                #print(outcome)
                 playHistory.append(playMachine)
-                winHistory = self.player.get_win_history
-                winHistory.append(iter(next(trial.get_outcome().values())))
-                winrateAdjustments = self.behavioralModel.adjust_winrates(playHistory,winHistory,self.get_winrates)
+                winHistory.append(next(iter(outcome.values())))
+                winrateAdjustments = self.behavioralModel.adjust_winrates(playHistory,winHistory,self.get_winrates())
                 self.adjust_probabilities(winrateAdjustments)
+                requests.post("http://localhost:3000/spectator",json={"event":"machineAdjustment","winrates":self.get_winrates(),"adjustments":winrateAdjustments})
                 min = 0
-                for i in range(len(adjustments)):
-                    if (adjustments[i] < adjustments[min]):
+                for i in range(len(winrateAdjustments)):
+                    if (winrateAdjustments[i] < winrateAdjustments[min]):
                         min = i
-                trial.set_behavioral_prediction(min,adjustments)
+                trial.set_behavioral_prediction(min,winrateAdjustments)
                 self.player.add_to_history(trial)
-                self.inTrial = False
+                self.playMachine = playMachine
+                #self.inTrial = False
     
 class FeatureExtractor:
     def __init__(self):
@@ -328,16 +338,16 @@ class FeatureExtractor:
         corrected_angle = (-angle) % (2 * math.pi)
         return corrected_angle
 
-    def compute_theta_dot(theta, prev_theta, dt):
+    def compute_theta_dot(self,theta, prev_theta, dt):
         delta = (theta - prev_theta) % (2 * math.pi)
         if delta > math.pi:
             delta -= 2 * math.pi
         return delta / dt
 
-    def compute_velocity(pos, prev_pos, dt):
+    def compute_velocity(self,pos, prev_pos, dt):
         return [(pos[i] - prev_pos[i]) / dt for i in range(len(pos))]
 
-    def compute_acceleration(vel, prev_vel, dt):
+    def compute_acceleration(self,vel, prev_vel, dt):
         return [(vel[i] - prev_vel[i]) / dt for i in range(len(vel))]
 
     def compute_theta_to_machines(self,position, theta_angle):
@@ -393,7 +403,6 @@ class FeatureExtractor:
         # Velocity & Acceleration
         if previous_data:
             dt = timestamp - previous_data['time']
-
             prev_pos = [previous_data['position_x'], previous_data['position_y'], previous_data['position_z']]
             vel = self.compute_velocity(pos, prev_pos, dt)
             streamed_data.update({
@@ -419,7 +428,7 @@ class FeatureExtractor:
 
         # θ_1 through θ_4: angle to each machine
         angle_dict = self.compute_theta_to_machines(pos, theta)
-        for i, name in enumerate(["machine1", "machine2", "machine3", "machine4"], 1):
+        for i, name in enumerate(self.MACHINE_CENTERS.keys(), 1):
             streamed_data.update({f'theta_{i}': angle_dict.get(name, 0)})
 
         return streamed_data

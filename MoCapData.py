@@ -930,9 +930,9 @@ def generate_rigid_body_marker_srand(marker_num=0, frame_num = 0):
     rigid_body_marker.error=random.random()
 
     return rigid_body_marker
-def generate_rigid_body(body_num=0, frame_num = 0):
-    pos=generate_position_srand(-1.5, 1.5)
-    rot = [1,0,0,0]
+def generate_rigid_body(body_num=0, frame_num = 0,x=0,z=0,w=1,rx=0,ry=0,rz=0):
+    pos=[x,(random.random()*100),z]
+    rot = [w,rx,ry,rz]
     rigid_body = RigidBody(body_num,pos,rot)
     rigid_body.add_rigid_body_marker(generate_rigid_body_marker_srand(0, frame_num))
     rigid_body.add_rigid_body_marker(generate_rigid_body_marker_srand(1, frame_num))
@@ -940,10 +940,10 @@ def generate_rigid_body(body_num=0, frame_num = 0):
     rigid_body.tracking_valid = True
     return rigid_body
 
-def generate_rigid_body_data(frame_num = 0):
+def generate_rigid_body_data(frame_num = 0,x=0,z=0,w=1,rx=0,ry=0,rz=0):
     rigid_body_data=RigidBodyData()
     # add rigid bodies
-    rigid_body_data.add_rigid_body(generate_rigid_body(0, frame_num))
+    rigid_body_data.add_rigid_body(generate_rigid_body(0, frame_num,x,z,w,rx,ry,rz))
     #rigid_body_data.add_rigid_body(generate_rigid_body(1, frame_num))
     #rigid_body_data.add_rigid_body(generate_rigid_body(2, frame_num))
     return rigid_body_data
@@ -1046,18 +1046,11 @@ def generate_suffix_data(frame_num = 0):
     return frame_suffix_data
 
 
-def generate_mocap_data(frame_num=0):
+def generate_mocap_data(frame_num=0,x=0,z=0,w=1,rx=0,ry=0,rz=0):
     mocap_data=MoCapData()
 
     mocap_data.set_prefix_data(generate_prefix_data(frame_num))
-    #mocap_data.set_marker_set_data(generate_marker_set_data(frame_num))
-    mocap_data.set_rigid_body_data(generate_rigid_body_data(frame_num))
-    #mocap_data.set_skeleton_data(generate_skeleton_data(frame_num))
-    #mocap_data.set_labeled_marker_data(generate_labeled_marker_data(frame_num))
-    #mocap_data.set_force_plate_data(generate_force_plate_data(frame_num))
-    #mocap_data.set_device_data(generate_device_data(frame_num))
-    #mocap_data.set_suffix_data(generate_suffix_data(frame_num))
-
+    mocap_data.set_rigid_body_data(generate_rigid_body_data(frame_num,x,z,w,rx,ry,rz))
     return mocap_data
 
 def test_all(run_test=True):

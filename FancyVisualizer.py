@@ -4,7 +4,7 @@ import threading
 from multiprocessing import Process
 import textwrap
 from time import time,sleep
-from FeatureExtractor import Machine, Game, Player, Trial, WindowedControl, IntegralLineOfSight, BayesianHouse
+from FeatureExtractor import Machine, Game, Player, Trial, IntegralLineOfSight, BayesianHouse
 import math
 import requests
 
@@ -262,10 +262,12 @@ class ConnectionManager:
                         else:
                             dpg.set_item_label(self.connection, f"Connected!")
                             dpg.bind_item_theme(self.connection, self.green_theme)
+                            self.streaming_client.set_print_level(0)
                             self.logger.log_event(f"Connected to server (after {tries} failed attempts)")
                     else:
                         dpg.set_item_label(self.connection, "Connected!")
                         dpg.bind_item_theme(self.connection, self.green_theme)
+                        self.streaming_client.set_print_level(0)
                         self.logger.log_event("Connected to server")
             except Exception as e:
                 self.logger.log_event(f"ERROR: starting streaming client threw: {e}")
@@ -448,11 +450,7 @@ class GameManager:
         if not self.game.behindFoyer:
             self.logger.log_event("Left Foyer!")
             self.game.behindFoyer = True
-        if self.game.playMachine is not None:
-            self.logger.log_event(f"Played machine {self.game.playMachine}")
-        
-        # Check for collision events
-        if self.game.inTrial and self.game.trials:
+        if self.game.playMachine is not None and self.game.inTrial:
             current_trial = self.game.trials[-1]
             if current_trial.get_outcome() is not None:
                 machine_name = next(iter(current_trial.get_outcome().keys()))
@@ -460,11 +458,12 @@ class GameManager:
                 self.logger.log_event(f"Collision detected with {machine_name} and outcome was {win_loss}")
                 self.connection_manager.send_outcome(machine_name,win_loss)
                 self.connection_manager.toggle_trial()
-
+                #self.game.inTrial = False
+        
     def update_rigid_body_visual(self, processed_data):
         # Low poll rate update for spectator website
         if processed_data:
-            if processed_data['time'] % 20 == 0:
+            if processed_data['time'] % 200 == 0:
                 self.connection_manager.send_position(processed_data['position_x'],processed_data['position_z'], processed_data['theta'])
             # Update red dot (plot expects [position_z] and [position_x])
             dpg.set_value("red_dot", [[processed_data['position_z']], [processed_data['position_x']]])

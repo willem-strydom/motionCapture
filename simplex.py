@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import linprog
 import matplotlib.pyplot as plt
 
-def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0):
+def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0, direction=-1):
     """
     Optimize win probabilities for a MAB problem using simplex method.
     
@@ -15,13 +15,14 @@ def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0):
     Returns:
         Optimized win probabilities and expected return
     """
+    #print(p_values)
     n = len(p_values)
     if not (np.sum(p_values)==1):
         p_values = np.exp(p_values)/(np.sum(np.exp(p_values)))
-    
+    #print(p_values)
     # For linprog, we need to minimize c^T @ x
     # Since we want to maximize sum(p_i * w_i), we minimize -sum(p_i * w_i)
-    c = p_values  # Negative because linprog minimizes
+    c = direction * p_values  # Negative because linprog minimizes
     
     # Bounds for each win probability
     # Each w must be between max(0, w_original - alpha) and min(1, w_original + alpha)
@@ -47,7 +48,7 @@ def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0):
     # Calculate the expected return
     expected_return = np.sum(p_values * result.x)
     
-    return result.x, expected_return
+    return result.x-w_original
 
 def example_usage():
     # Example inputs
