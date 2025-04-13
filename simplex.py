@@ -15,7 +15,6 @@ def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0, direct
     Returns:
         Optimized win probabilities and expected return
     """
-    #print(p_values)
     n = len(p_values)
     if not (np.sum(p_values)==1):
         p_values = np.exp(p_values)/(np.sum(np.exp(p_values)))
@@ -44,6 +43,7 @@ def optimize_mab_simplex(p_values, w_original, alpha, sum_constraint=2.0, direct
     
     if not result.success:
         print(f"Warning: Optimization did not converge: {result.message}")
+        return [0,0,0,0]
     
     # Calculate the expected return
     expected_return = np.sum(p_values * result.x)
