@@ -12,7 +12,7 @@ from MocapModels import MocapModel
 from simplex import optimize_mab_simplex
 
 class TrialDataset(Dataset):
-    def __init__(self, trial_files, n_frames=50, history_length=5):
+    def __init__(self, trial_files, n_frames=4, history_length=5):
         self.trials = []
         self.labels = []
         self.n_frames = n_frames
@@ -65,19 +65,15 @@ class TrialDataset(Dataset):
         if len(timestamps) < self.n_frames:
             return None
         
-        step = len(timestamps) // self.n_frames
-        selected_indices = [i * step for i in range(self.n_frames)]
+        # Use the last n_frames for most recent behavior
+        selected_timestamps = timestamps[-self.n_frames:]
         
-        # Just use position and angle to each machine for simplicity
         features = []
-        for idx in selected_indices:
-            timestamp = timestamps[idx]
+        for timestamp in selected_timestamps:
             frame = foyer_data[timestamp]
             
-            # Extract only essential features
+            # Extract only angles to machines as key features
             features.extend([
-                frame.get('position_x', 0),
-                frame.get('position_z', 0),
                 frame.get('theta_1', 0),
                 frame.get('theta_2', 0),
                 frame.get('theta_3', 0),
@@ -91,7 +87,8 @@ class TrialDataset(Dataset):
         # Last N plays (one-hot encoded)
         recent_plays = np.zeros((self.history_length, 4))
         for i, play in enumerate(play_history[-self.history_length:]):
-            recent_plays[self.history_length - len(play_history) + i, play] = 1
+            if i < self.history_length:
+                recent_plays[self.history_length - len(play_history) + i, play] = 1
         
         # Machine win rates
         machine_plays = np.zeros(4)
@@ -153,7 +150,7 @@ class MLPMocapModel(MocapModel):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Feature dimensions
-        self.foyer_dim = n_frames * 6  # 6 features per frame
+        self.foyer_dim = n_frames * 4  # 4 angles per frame
         self.behavioral_dim = history_length * 4 + 4  # one-hot history + win rates
         
         if model_path:
@@ -198,17 +195,14 @@ class MLPMocapModel(MocapModel):
         if len(timestamps) < self.n_frames:
             return None
         
-        step = len(timestamps) // self.n_frames
-        selected_indices = [i * step for i in range(self.n_frames)]
+        # Use the last n_frames for most recent behavior
+        selected_timestamps = timestamps[-self.n_frames:]
         
         features = []
-        for idx in selected_indices:
-            timestamp = timestamps[idx]
+        for timestamp in selected_timestamps:
             frame = foyer[timestamp]
             
             features.extend([
-                frame.get('position_x', 0),
-                frame.get('position_z', 0),
                 frame.get('theta_1', 0),
                 frame.get('theta_2', 0),
                 frame.get('theta_3', 0),
@@ -243,28 +237,29 @@ class MLPMocapModel(MocapModel):
 
 
 def train_model(data_dirs=['./Willem', './Owen', './Ryan'], n_epochs=30, batch_size=16):
+    # Use the last directory as validation set
+    train_dirs = data_dirs[:-1]  # All but the last directory
+    val_dir = data_dirs[-1:]     # Last directory
+    
     # Collect trial files
-    trial_files = []
-    for directory in data_dirs:
-        trial_files.extend(glob.glob(os.path.join(directory, "*.json")))
+    train_files = []
+    for directory in train_dirs:
+        train_files.extend(glob.glob(os.path.join(directory, "*.json")))
     
-    # Create dataset
-    dataset = TrialDataset(trial_files)
+    val_files = []
+    for directory in val_dir:
+        val_files.extend(glob.glob(os.path.join(directory, "*.json")))
     
-    # Split data
-    train_indices, val_indices = train_test_split(
-        range(len(dataset)), test_size=0.2, random_state=42
-    )
-    
-    train_dataset = torch.utils.data.Subset(dataset, train_indices)
-    val_dataset = torch.utils.data.Subset(dataset, val_indices)
+    # Create datasets with the correct n_frames parameter
+    train_dataset = TrialDataset(train_files, n_frames=4)
+    val_dataset = TrialDataset(val_files, n_frames=4)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     
-    # Initialize model
+    # Initialize model with correct dimensions
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    foyer_dim = 50 * 6  # 50 frames * 6 features
+    foyer_dim = 4 * 4  # 4 frames * 4 features (angles only)
     behavioral_dim = 5 * 4 + 4  # 5 recent plays + 4 win rates
     
     model = SimpleMLP(foyer_dim, behavioral_dim).to(device)
@@ -286,8 +281,8 @@ def train_model(data_dirs=['./Willem', './Owen', './Ryan'], n_epochs=30, batch_s
             labels = labels.to(device).squeeze()
             
             # Split features
-            foyer_features = inputs[:, :300].to(device)  # First 300 features
-            behavioral_features = inputs[:, 300:].to(device)  # Remaining features
+            foyer_features = inputs[:, :foyer_dim].to(device)
+            behavioral_features = inputs[:, foyer_dim:].to(device)
             
             optimizer.zero_grad()
             outputs = model(foyer_features, behavioral_features)
@@ -309,8 +304,8 @@ def train_model(data_dirs=['./Willem', './Owen', './Ryan'], n_epochs=30, batch_s
             for inputs, labels in val_loader:
                 labels = labels.to(device).squeeze()
                 
-                foyer_features = inputs[:, :300].to(device)
-                behavioral_features = inputs[:, 300:].to(device)
+                foyer_features = inputs[:, :foyer_dim].to(device)
+                behavioral_features = inputs[:, foyer_dim:].to(device)
                 
                 outputs = model(foyer_features, behavioral_features)
                 _, predicted = outputs.max(1)
@@ -328,6 +323,7 @@ def train_model(data_dirs=['./Willem', './Owen', './Ryan'], n_epochs=30, batch_s
             best_val_acc = val_acc
             torch.save(model.state_dict(), 'best_mlp_model.pth')
     
+    print(f'Best validation accuracy: {best_val_acc:.2f}%')
     return model
 
 
